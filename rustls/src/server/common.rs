@@ -4,8 +4,8 @@ use crate::msgs::handshake::{ServerExtension, SessionID};
 use crate::session::SessionRandoms;
 use crate::suites;
 
-use std::mem;
 use ring::digest;
+use std::mem;
 
 pub struct HandshakeDetails {
     pub transcript: hash_hs::HandshakeHash,

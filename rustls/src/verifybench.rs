@@ -27,9 +27,10 @@ fn test_reddit_cert() {
         "reddit.com",
         &[
             include_bytes!("testdata/cert-reddit.0.der"),
-            include_bytes!("testdata/cert-reddit.1.der")
-        ]
-    ).bench(100)
+            include_bytes!("testdata/cert-reddit.1.der"),
+        ],
+    )
+    .bench(100)
 }
 
 #[test]
@@ -40,8 +41,9 @@ fn test_github_cert() {
         &[
             include_bytes!("testdata/cert-github.0.der"),
             include_bytes!("testdata/cert-github.1.der"),
-        ]
-    ).bench(100)
+        ],
+    )
+    .bench(100)
 }
 
 #[test]
@@ -53,8 +55,9 @@ fn test_arstechnica_cert() {
             include_bytes!("testdata/cert-arstechnica.0.der"),
             include_bytes!("testdata/cert-arstechnica.1.der"),
             include_bytes!("testdata/cert-arstechnica.2.der"),
-        ]
-    ).bench(100)
+        ],
+    )
+    .bench(100)
 }
 
 #[test]
@@ -66,8 +69,9 @@ fn test_servo_cert() {
             include_bytes!("testdata/cert-servo.0.der"),
             include_bytes!("testdata/cert-servo.1.der"),
             include_bytes!("testdata/cert-servo.2.der"),
-        ]
-    ).bench(100)
+        ],
+    )
+    .bench(100)
 }
 
 #[test]
@@ -78,8 +82,9 @@ fn test_twitter_cert() {
         &[
             include_bytes!("testdata/cert-twitter.0.der"),
             include_bytes!("testdata/cert-twitter.1.der"),
-        ]
-    ).bench(100)
+        ],
+    )
+    .bench(100)
 }
 
 #[test]
@@ -90,8 +95,9 @@ fn test_wikipedia_cert() {
         &[
             include_bytes!("testdata/cert-wikipedia.0.der"),
             include_bytes!("testdata/cert-wikipedia.1.der"),
-        ]
-    ).bench(100)
+        ],
+    )
+    .bench(100)
 }
 
 #[test]
@@ -103,8 +109,9 @@ fn test_google_cert() {
             include_bytes!("testdata/cert-google.0.der"),
             include_bytes!("testdata/cert-google.1.der"),
             include_bytes!("testdata/cert-google.1.der"),
-        ]
-    ).bench(100)
+        ],
+    )
+    .bench(100)
 }
 
 #[test]
@@ -116,8 +123,9 @@ fn test_hn_cert() {
             include_bytes!("testdata/cert-hn.0.der"),
             include_bytes!("testdata/cert-hn.1.der"),
             include_bytes!("testdata/cert-hn.1.der"),
-        ]
-    ).bench(100)
+        ],
+    )
+    .bench(100)
 }
 
 #[test]
@@ -128,8 +136,9 @@ fn test_stackoverflow_cert() {
         &[
             include_bytes!("testdata/cert-stackoverflow.0.der"),
             include_bytes!("testdata/cert-stackoverflow.1.der"),
-        ]
-    ).bench(100)
+        ],
+    )
+    .bench(100)
 }
 
 #[test]
@@ -140,8 +149,9 @@ fn test_duckduckgo_cert() {
         &[
             include_bytes!("testdata/cert-duckduckgo.0.der"),
             include_bytes!("testdata/cert-duckduckgo.1.der"),
-        ]
-    ).bench(100)
+        ],
+    )
+    .bench(100)
 }
 
 #[test]
@@ -153,8 +163,9 @@ fn test_rustlang_cert() {
             include_bytes!("testdata/cert-rustlang.0.der"),
             include_bytes!("testdata/cert-rustlang.1.der"),
             include_bytes!("testdata/cert-rustlang.2.der"),
-        ]
-    ).bench(100)
+        ],
+    )
+    .bench(100)
 }
 
 #[test]
@@ -167,7 +178,8 @@ fn test_wapo_cert() {
             include_bytes!("testdata/cert-wapo.1.der"),
             include_bytes!("testdata/cert-wapo.2.der"),
         ],
-    ).bench(100)
+    )
+    .bench(100)
 }
 
 struct Context {
@@ -186,7 +198,11 @@ impl Context {
             name,
             domain,
             roots,
-            chain: certs.iter().copied().map(|bytes| key::Certificate(bytes.to_vec())).collect(),
+            chain: certs
+                .iter()
+                .copied()
+                .map(|bytes| key::Certificate(bytes.to_vec()))
+                .collect(),
             now: SystemTime::UNIX_EPOCH + Duration::from_secs(1500000000),
         }
     }
@@ -198,11 +214,22 @@ impl Context {
         for _ in 0..count {
             let start = Instant::now();
             let dns_name = webpki::DNSNameRef::try_from_ascii_str(self.domain).unwrap();
-            V.verify_server_cert(end_entity, intermediates, &self.roots, dns_name, &[], self.now)
-                .unwrap();
+            V.verify_server_cert(
+                end_entity,
+                intermediates,
+                &self.roots,
+                dns_name,
+                &[],
+                self.now,
+            )
+            .unwrap();
             times.push(duration_nanos(Instant::now().duration_since(start)));
         }
 
-        println!("verify_server_cert({}): min {:?}us", self.name, times.iter().min().unwrap() / 1000);
+        println!(
+            "verify_server_cert({}): min {:?}us",
+            self.name,
+            times.iter().min().unwrap() / 1000
+        );
     }
 }

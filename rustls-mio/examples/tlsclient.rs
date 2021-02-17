@@ -408,7 +408,8 @@ fn lookup_versions(versions: &[String]) -> Vec<rustls::ProtocolVersion> {
 fn load_certs(filename: &str) -> Vec<rustls::Certificate> {
     let certfile = fs::File::open(filename).expect("cannot open certificate file");
     let mut reader = BufReader::new(certfile);
-    rustls_pemfile::certs(&mut reader).unwrap()
+    rustls_pemfile::certs(&mut reader)
+        .unwrap()
         .iter()
         .map(|v| rustls::Certificate(v.clone()))
         .collect()
@@ -427,7 +428,10 @@ fn load_private_key(filename: &str) -> rustls::PrivateKey {
         }
     }
 
-    panic!("no keys found in {:?} (encrypted keys not supported)", filename);
+    panic!(
+        "no keys found in {:?} (encrypted keys not supported)",
+        filename
+    );
 }
 
 fn load_key_and_cert(config: &mut rustls::ClientConfig, keyfile: &str, certsfile: &str) {

@@ -240,11 +240,13 @@ impl KeyType {
     }
 
     fn get_key(&self) -> rustls::PrivateKey {
-        rustls::PrivateKey(rustls_pemfile::pkcs8_private_keys(&mut io::BufReader::new(
-            fs::File::open(self.path_for("end.key")).unwrap(),
-        ))
-        .unwrap()[0]
-            .clone())
+        rustls::PrivateKey(
+            rustls_pemfile::pkcs8_private_keys(&mut io::BufReader::new(
+                fs::File::open(self.path_for("end.key")).unwrap(),
+            ))
+            .unwrap()[0]
+                .clone(),
+        )
     }
 
     fn get_client_chain(&self) -> Vec<rustls::Certificate> {
@@ -258,11 +260,13 @@ impl KeyType {
     }
 
     fn get_client_key(&self) -> rustls::PrivateKey {
-        rustls::PrivateKey(rustls_pemfile::pkcs8_private_keys(&mut io::BufReader::new(
-            fs::File::open(self.path_for("client.key")).unwrap(),
-        ))
-        .unwrap()[0]
-            .clone())
+        rustls::PrivateKey(
+            rustls_pemfile::pkcs8_private_keys(&mut io::BufReader::new(
+                fs::File::open(self.path_for("client.key")).unwrap(),
+            ))
+            .unwrap()[0]
+                .clone(),
+        )
     }
 }
 

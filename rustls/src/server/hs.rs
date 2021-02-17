@@ -243,12 +243,17 @@ impl ExtensionProcessing {
             if !for_resume
                 && hello
                     .find_extension(ExtensionType::SCT)
-                    .is_some() {
+                    .is_some()
+            {
                 if !sess.common.is_tls13() {
                     // Take the SCT list, if any, so we don't send it later,
                     // and put it in the legacy extension.
-                    server_key.take_sct_list().map(|sct_list| self.exts
-                        .push(ServerExtension::make_sct(sct_list)));
+                    server_key
+                        .take_sct_list()
+                        .map(|sct_list| {
+                            self.exts
+                                .push(ServerExtension::make_sct(sct_list))
+                        });
                 }
             } else {
                 // Throw away any SCT list so we don't send it later.
@@ -430,10 +435,10 @@ impl ExpectClientHello {
         sess: &mut ServerSessionImpl,
         server_certkey: &mut sign::CertifiedKey,
     ) {
-       let ocsp = match server_certkey.take_ocsp() {
-           Some(ocsp) => ocsp,
-           None => return,
-       };
+        let ocsp = match server_certkey.take_ocsp() {
+            Some(ocsp) => ocsp,
+            None => return,
+        };
 
         let st = CertificateStatus::new(ocsp);
 
@@ -576,14 +581,9 @@ impl ExpectClientHello {
         self.handshake.session_id = *id;
         self.emit_server_hello(sess, None, client_hello, Some(&resumedata))?;
 
-        let suite = sess
-            .common
-            .get_suite_assert();
-        let secrets = SessionSecrets::new_resume(
-            &self.handshake.randoms,
-            suite,
-            &resumedata.master_secret.0,
-        );
+        let suite = sess.common.get_suite_assert();
+        let secrets =
+            SessionSecrets::new_resume(&self.handshake.randoms, suite, &resumedata.master_secret.0);
         sess.config.key_log.log(
             "CLIENT_RANDOM",
             &secrets.randoms.client,
@@ -726,7 +726,9 @@ impl State for ExpectClientHello {
             trace!("sig schemes {:?}", sigschemes_ext);
             trace!("alpn protocols {:?}", alpn_protocols);
 
-            let alpn_slices = alpn_protocols.as_ref().map(|vec| vec.as_slice());
+            let alpn_slices = alpn_protocols
+                .as_ref()
+                .map(|vec| vec.as_slice());
 
             let client_hello = ClientHello::new(sni_ref, &sigschemes_ext, alpn_slices);
 

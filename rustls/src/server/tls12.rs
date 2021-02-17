@@ -69,7 +69,9 @@ impl hs::State for ExpectCertificate {
             None => {
                 if !mandatory {
                     debug!("client auth requested but no certificate supplied");
-                    self.handshake.transcript.abandon_client_auth();
+                    self.handshake
+                        .transcript
+                        .abandon_client_auth();
                     return Ok(self.into_expect_tls12_client_kx(None));
                 }
                 sess.common
@@ -151,9 +153,7 @@ impl hs::State for ExpectClientKX {
                 TLSError::PeerMisbehavedError("key exchange completion failed".to_string())
             })?;
 
-        let suite = sess
-            .common
-            .get_suite_assert();
+        let suite = sess.common.get_suite_assert();
         let secrets = if self.handshake.using_ems {
             let handshake_hash = self
                 .handshake

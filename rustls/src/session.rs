@@ -19,9 +19,9 @@ use crate::vecbuf::ChunkVecBuffer;
 use ring;
 use std::io::{Read, Write};
 
+use ring::digest::Digest;
 use std::collections::VecDeque;
 use std::io;
-use ring::digest::Digest;
 
 /// Generalises `ClientSession` and `ServerSession`
 pub trait Session: quic::QuicExt + Read + Write + Send + Sync {
@@ -414,7 +414,13 @@ impl SessionSecrets {
             randoms.extend_from_slice(context);
         }
 
-        prf::prf(output, self.suite.hmac_algorithm(), &self.master_secret, label, &randoms)
+        prf::prf(
+            output,
+            self.suite.hmac_algorithm(),
+            &self.master_secret,
+            label,
+            &randoms,
+        )
     }
 }
 

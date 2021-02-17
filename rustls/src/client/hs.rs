@@ -1,7 +1,6 @@
 #[cfg(feature = "logging")]
 use crate::bs_debug;
 use crate::check::check_message;
-use crate::{cipher, SupportedCipherSuite};
 use crate::client::ClientSessionImpl;
 use crate::error::TLSError;
 use crate::key_schedule::{KeyScheduleEarly, KeyScheduleHandshake};
@@ -28,13 +27,14 @@ use crate::session::SessionSecrets;
 use crate::suites;
 use crate::ticketer;
 use crate::verify;
+use crate::{cipher, SupportedCipherSuite};
 
 use crate::client::common::{ClientHelloDetails, ReceivedTicketDetails};
 use crate::client::common::{HandshakeDetails, ServerCertDetails};
 use crate::client::{tls12, tls13};
 
-use webpki;
 use ring::digest::Digest;
+use webpki;
 
 pub type NextState = Box<dyn State + Send + Sync>;
 pub type NextStateOrError = Result<NextState, TLSError>;
@@ -197,13 +197,10 @@ struct ExpectServerHelloOrHelloRetryRequest {
     extra_exts: Vec<ClientExtension>,
 }
 
-pub fn compatible_suite(
-    sess: &ClientSessionImpl,
-    resuming_suite: &SupportedCipherSuite,
-) -> bool {
+pub fn compatible_suite(sess: &ClientSessionImpl, resuming_suite: &SupportedCipherSuite) -> bool {
     match sess.common.get_suite() {
         Some(suite) => suite.can_resume_to(&resuming_suite),
-        None => true
+        None => true,
     }
 }
 
@@ -216,15 +213,9 @@ fn emit_client_hello_for_retry(
 ) -> NextState {
     // Do we have a SessionID or ticket cached for this host?
     let (ticket, resume_version) = if let Some(resuming) = &handshake.resuming_session {
-        (
-            resuming.ticket.0.clone(),
-            resuming.version,
-        )
+        (resuming.ticket.0.clone(), resuming.version)
     } else {
-        (
-            Vec::new(),
-            ProtocolVersion::Unknown(0),
-        )
+        (Vec::new(), ProtocolVersion::Unknown(0))
     };
 
     let support_tls12 = sess
@@ -432,9 +423,10 @@ pub fn process_alpn_protocol(
         if !sess
             .config
             .alpn_protocols
-            .contains(alpn_protocol) {
-                return Err(illegal_param(sess, "server sent non-offered ALPN protocol"));
-            }
+            .contains(alpn_protocol)
+        {
+            return Err(illegal_param(sess, "server sent non-offered ALPN protocol"));
+        }
     }
 
     debug!(
@@ -525,9 +517,7 @@ impl State for ExpectServerHello {
         };
 
         let version = match server_version {
-            TLSv1_3 if tls13_supported => {
-                TLSv1_3
-            },
+            TLSv1_3 if tls13_supported => TLSv1_3,
             TLSv1_2 if sess.config.supports_version(TLSv1_2) => {
                 if sess.early_data.is_enabled() && sess.common.early_traffic {
                     // The client must fail with a dedicated error code if the server
@@ -601,12 +591,12 @@ impl State for ExpectServerHello {
             }
         }
 
-        let scs = sess.find_cipher_suite(server_hello.cipher_suite)
+        let scs = sess
+            .find_cipher_suite(server_hello.cipher_suite)
             .ok_or_else(|| {
                 sess.common
                     .send_fatal_alert(AlertDescription::HandshakeFailure);
-                TLSError::PeerMisbehavedError(
-                    "server chose non-offered ciphersuite".to_string())
+                TLSError::PeerMisbehavedError("server chose non-offered ciphersuite".to_string())
             })?;
 
         debug!("Using ciphersuite {:?}", server_hello.cipher_suite);
@@ -614,8 +604,7 @@ impl State for ExpectServerHello {
             return Err(illegal_param(sess, "server varied selected ciphersuite"));
         }
 
-        if !scs.usable_for_version(version)
-        {
+        if !scs.usable_for_version(version) {
             return Err(illegal_param(
                 sess,
                 "server chose unusable ciphersuite for version",
@@ -643,7 +632,10 @@ impl State for ExpectServerHello {
                 &mut self.hello,
             )?;
             tls13::emit_fake_ccs(&mut self.handshake, sess);
-            return Ok(self.into_expect_tls13_encrypted_extensions(key_schedule, hash_at_client_recvd_server_hello));
+            return Ok(self.into_expect_tls13_encrypted_extensions(
+                key_schedule,
+                hash_at_client_recvd_server_hello,
+            ));
         }
 
         // TLS1.2 only from here-on

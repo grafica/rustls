@@ -184,9 +184,13 @@ impl ProducesTickets for TicketSwitcher {
 
         // Decrypt with the current key; if that fails, try with the previous.
         let state = self.state.lock().unwrap();
-        state.current.decrypt(ciphertext)
+        state
+            .current
+            .decrypt(ciphertext)
             .or_else(|| {
-                state.previous.as_ref()
+                state
+                    .previous
+                    .as_ref()
                     .and_then(|previous| previous.decrypt(ciphertext))
             })
     }

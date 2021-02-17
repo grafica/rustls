@@ -15,9 +15,9 @@ use crate::msgs::handshake::{HandshakeMessagePayload, HandshakePayload};
 use crate::msgs::message::{Message, MessagePayload};
 use crate::msgs::persist;
 use crate::session::SessionSecrets;
-use crate::{suites, SupportedCipherSuite};
 use crate::ticketer;
 use crate::verify;
+use crate::{suites, SupportedCipherSuite};
 
 use crate::client::common::{ClientAuthDetails, ReceivedTicketDetails};
 use crate::client::common::{HandshakeDetails, ServerCertDetails, ServerKXDetails};
@@ -199,7 +199,8 @@ impl hs::State for ExpectServerKX {
             .transcript
             .add_message(&m);
 
-        let decoded_kx = opaque_kx.unwrap_given_kxa(&self.suite.kx)
+        let decoded_kx = opaque_kx
+            .unwrap_given_kxa(&self.suite.kx)
             .ok_or_else(|| {
                 sess.common
                     .send_fatal_alert(AlertDescription::DecodeError);
@@ -277,10 +278,8 @@ fn emit_certverify(
                 .transcript
                 .abandon_client_auth();
             return Ok(());
-        },
-        Some(signer) => {
-            signer
         }
+        Some(signer) => signer,
     };
 
     let message = handshake

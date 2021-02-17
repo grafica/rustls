@@ -179,28 +179,37 @@ impl KeyType {
     }
 
     pub fn get_chain(&self) -> Vec<Certificate> {
-        rustls_pemfile::certs(&mut io::BufReader::new(self.bytes_for("end.fullchain"))).unwrap()
+        rustls_pemfile::certs(&mut io::BufReader::new(self.bytes_for("end.fullchain")))
+            .unwrap()
             .iter()
             .map(|v| Certificate(v.clone()))
             .collect()
     }
 
     pub fn get_key(&self) -> PrivateKey {
-        PrivateKey(rustls_pemfile::pkcs8_private_keys(&mut io::BufReader::new(self.bytes_for("end.key"))).unwrap()[0]
-            .clone())
+        PrivateKey(
+            rustls_pemfile::pkcs8_private_keys(&mut io::BufReader::new(self.bytes_for("end.key")))
+                .unwrap()[0]
+                .clone(),
+        )
     }
 
     fn get_client_chain(&self) -> Vec<Certificate> {
-        rustls_pemfile::certs(&mut io::BufReader::new(self.bytes_for("client.fullchain"))).unwrap()
+        rustls_pemfile::certs(&mut io::BufReader::new(self.bytes_for("client.fullchain")))
+            .unwrap()
             .iter()
             .map(|v| Certificate(v.clone()))
             .collect()
     }
 
     fn get_client_key(&self) -> PrivateKey {
-        PrivateKey(rustls_pemfile::pkcs8_private_keys(&mut io::BufReader::new(self.bytes_for("client.key"))).unwrap()
-            [0]
-        .clone())
+        PrivateKey(
+            rustls_pemfile::pkcs8_private_keys(&mut io::BufReader::new(
+                self.bytes_for("client.key"),
+            ))
+            .unwrap()[0]
+                .clone(),
+        )
     }
 }
 

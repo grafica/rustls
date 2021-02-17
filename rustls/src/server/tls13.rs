@@ -1,5 +1,4 @@
 use crate::check::check_message;
-use crate::{cipher, SupportedCipherSuite};
 use crate::error::TLSError;
 use crate::key_schedule::{
     KeyScheduleEarly, KeyScheduleHandshake, KeyScheduleNonSecret, KeyScheduleTraffic,
@@ -39,6 +38,7 @@ use crate::server::ServerSessionImpl;
 use crate::sign;
 use crate::suites;
 use crate::verify;
+use crate::{cipher, SupportedCipherSuite};
 #[cfg(feature = "quic")]
 use crate::{msgs::handshake::NewSessionTicketExtension, quic, session::Protocol};
 
@@ -232,7 +232,12 @@ impl CompleteClientHelloHandling {
         sess.common.send_msg(m, false);
     }
 
-    fn emit_hello_retry_request(&mut self, suite: &'static SupportedCipherSuite, sess: &mut ServerSessionImpl, group: NamedGroup) {
+    fn emit_hello_retry_request(
+        &mut self,
+        suite: &'static SupportedCipherSuite,
+        sess: &mut ServerSessionImpl,
+        group: NamedGroup,
+    ) {
         let mut req = HelloRetryRequest {
             legacy_version: ProtocolVersion::TLSv1_2,
             session_id: SessionID::empty(),
@@ -563,9 +568,13 @@ impl CompleteClientHelloHandling {
 
         let chosen_share = supported_groups
             .iter()
-            .find_map(|group| shares_ext.iter().find(|share| share.group == *group));
+            .find_map(|group| {
+                shares_ext
+                    .iter()
+                    .find(|share| share.group == *group)
+            });
 
-        let chosen_share =  match chosen_share {
+        let chosen_share = match chosen_share {
             Some(s) => s,
             None => {
                 // We don't have a suitable key share.  Choose a suitable group and
@@ -620,7 +629,8 @@ impl CompleteClientHelloHandling {
 
                 let resume = maybe_resume.unwrap();
 
-                if !self.check_binder(suite, chm, &resume.master_secret.0, &psk_offer.binders[i].0) {
+                if !self.check_binder(suite, chm, &resume.master_secret.0, &psk_offer.binders[i].0)
+                {
                     sess.common
                         .send_fatal_alert(AlertDescription::DecryptError);
                     return Err(TLSError::PeerMisbehavedError(
@@ -752,7 +762,9 @@ impl hs::State for ExpectCertificate {
             None => {
                 if !mandatory {
                     debug!("client auth requested but no certificate supplied");
-                    self.handshake.transcript.abandon_client_auth();
+                    self.handshake
+                        .transcript
+                        .abandon_client_auth();
                     return Ok(self.into_expect_finished());
                 }
 
@@ -1008,7 +1020,10 @@ impl hs::State for ExpectFinished {
         let read_key = self
             .key_schedule
             .client_application_traffic_secret(
-                self.handshake.hash_at_server_fin.as_ref().unwrap(),
+                self.handshake
+                    .hash_at_server_fin
+                    .as_ref()
+                    .unwrap(),
                 &*sess.config.key_log,
                 &self.handshake.randoms.client,
             );
