@@ -565,6 +565,7 @@ pub enum ClientExtension {
     TransportParametersDraft(Vec<u8>),
     EncryptedClientHello(ClientEch),
     EchOuterExtensions(OuterExtensions),
+    ClientHelloInnerIndication,
     EarlyData,
     Unknown(UnknownExtension),
 }
@@ -592,6 +593,7 @@ impl ClientExtension {
             ClientExtension::TransportParametersDraft(_) => ExtensionType::TransportParametersDraft,
             ClientExtension::EncryptedClientHello(_) => ExtensionType::EncryptedClientHello,
             ClientExtension::EchOuterExtensions(_) => ExtensionType::EchOuterExtensions,
+            ClientExtension::ClientHelloInnerIndication => ExtensionType::EchIsInner,
             ClientExtension::EarlyData => ExtensionType::EarlyData,
             ClientExtension::Unknown(ref r) => r.typ,
         }
@@ -611,6 +613,7 @@ impl Codec for ClientExtension {
             ClientExtension::SessionTicketRequest
             | ClientExtension::ExtendedMasterSecretRequest
             | ClientExtension::SignedCertificateTimestampRequest
+            | ClientExtension::ClientHelloInnerIndication
             | ClientExtension::EarlyData => {}
             ClientExtension::SessionTicketOffer(ref r) => r.encode(&mut sub),
             ClientExtension::Protocols(ref r) => r.encode(&mut sub),
@@ -693,6 +696,9 @@ impl Codec for ClientExtension {
             }
             ExtensionType::EchOuterExtensions => {
                 ClientExtension::EchOuterExtensions(OuterExtensions::read(&mut sub)?)
+            }
+            ExtensionType::EchIsInner if !sub.any_left() => {
+                ClientExtension::ClientHelloInnerIndication
             }
             ExtensionType::EarlyData if !sub.any_left() => ClientExtension::EarlyData,
             _ => ClientExtension::Unknown(UnknownExtension::read(typ, &mut sub)),
