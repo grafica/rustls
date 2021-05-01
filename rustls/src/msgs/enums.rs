@@ -238,7 +238,8 @@ enum_builder! {
         ChannelId => 0x754f,
         RenegotiationInfo => 0xff01,
         TransportParametersDraft => 0xffa5,
-        EncryptedClientHello => 0xfe0a
+        EncryptedClientHello => 0xfe0a,
+        EchOuterExtensions => 0xfd00
     }
 }
 

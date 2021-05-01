@@ -542,6 +542,7 @@ pub type SCTList = VecU16OfPayloadU16;
 declare_u8_vec!(PSKKeyExchangeModes, PSKKeyExchangeMode);
 declare_u16_vec!(KeyShareEntries, KeyShareEntry);
 declare_u8_vec!(ProtocolVersions, ProtocolVersion);
+declare_u8_vec!(OuterExtensions, ExtensionType);
 
 #[derive(Clone, Debug)]
 pub enum ClientExtension {
@@ -563,6 +564,7 @@ pub enum ClientExtension {
     TransportParameters(Vec<u8>),
     TransportParametersDraft(Vec<u8>),
     EncryptedClientHello(ClientEch),
+    EchOuterExtensions(OuterExtensions),
     EarlyData,
     Unknown(UnknownExtension),
 }
@@ -589,6 +591,7 @@ impl ClientExtension {
             ClientExtension::TransportParameters(_) => ExtensionType::TransportParameters,
             ClientExtension::TransportParametersDraft(_) => ExtensionType::TransportParametersDraft,
             ClientExtension::EncryptedClientHello(_) => ExtensionType::EncryptedClientHello,
+            ClientExtension::EchOuterExtensions(_) => ExtensionType::EchOuterExtensions,
             ClientExtension::EarlyData => ExtensionType::EarlyData,
             ClientExtension::Unknown(ref r) => r.typ,
         }
@@ -620,6 +623,7 @@ impl Codec for ClientExtension {
             ClientExtension::TransportParameters(ref r)
             | ClientExtension::TransportParametersDraft(ref r) => sub.extend_from_slice(r),
             ClientExtension::EncryptedClientHello(ref r) => r.encode(&mut sub),
+            ClientExtension::EchOuterExtensions(ref r) => r.encode(&mut sub),
             ClientExtension::Unknown(ref r) => r.encode(&mut sub),
         }
 
@@ -686,6 +690,9 @@ impl Codec for ClientExtension {
             }
             ExtensionType::EncryptedClientHello => {
                 ClientExtension::EncryptedClientHello(ClientEch::read(&mut sub)?)
+            }
+            ExtensionType::EchOuterExtensions => {
+                ClientExtension::EchOuterExtensions(OuterExtensions::read(&mut sub)?)
             }
             ExtensionType::EarlyData if !sub.any_left() => ClientExtension::EarlyData,
             _ => ClientExtension::Unknown(UnknownExtension::read(typ, &mut sub)),
