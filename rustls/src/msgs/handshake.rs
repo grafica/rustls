@@ -562,7 +562,7 @@ pub enum ClientExtension {
     SignedCertificateTimestampRequest,
     TransportParameters(Vec<u8>),
     TransportParametersDraft(Vec<u8>),
-    EncryptedClientHello(Vec<u8>),
+    EncryptedClientHello(ClientEch),
     EarlyData,
     Unknown(UnknownExtension),
 }
@@ -619,7 +619,7 @@ impl Codec for ClientExtension {
             ClientExtension::CertificateStatusRequest(ref r) => r.encode(&mut sub),
             ClientExtension::TransportParameters(ref r)
             | ClientExtension::TransportParametersDraft(ref r) => sub.extend_from_slice(r),
-            ClientExtension::EncryptedClientHello(ref r) => sub.extend_from_slice(r),
+            ClientExtension::EncryptedClientHello(ref r) => r.encode(&mut sub),
             ClientExtension::Unknown(ref r) => r.encode(&mut sub),
         }
 
@@ -685,7 +685,7 @@ impl Codec for ClientExtension {
                 ClientExtension::TransportParametersDraft(sub.rest().to_vec())
             }
             ExtensionType::EncryptedClientHello => {
-                ClientExtension::EncryptedClientHello(sub.rest().to_vec())
+                ClientExtension::EncryptedClientHello(ClientEch::read(&mut sub)?)
             }
             ExtensionType::EarlyData if !sub.any_left() => ClientExtension::EarlyData,
             _ => ClientExtension::Unknown(UnknownExtension::read(typ, &mut sub)),
@@ -737,6 +737,7 @@ pub enum ServerExtension {
     SupportedVersions(ProtocolVersion),
     TransportParameters(Vec<u8>),
     TransportParametersDraft(Vec<u8>),
+    EncryptedClientHello(ServerEch),
     EarlyData,
     Unknown(UnknownExtension),
 }
@@ -757,6 +758,7 @@ impl ServerExtension {
             ServerExtension::SupportedVersions(_) => ExtensionType::SupportedVersions,
             ServerExtension::TransportParameters(_) => ExtensionType::TransportParameters,
             ServerExtension::TransportParametersDraft(_) => ExtensionType::TransportParametersDraft,
+            ServerExtension::EncryptedClientHello(_) => ExtensionType::EncryptedClientHello,
             ServerExtension::EarlyData => ExtensionType::EarlyData,
             ServerExtension::Unknown(ref r) => r.typ,
         }
@@ -783,6 +785,7 @@ impl Codec for ServerExtension {
             ServerExtension::SupportedVersions(ref r) => r.encode(&mut sub),
             ServerExtension::TransportParameters(ref r)
             | ServerExtension::TransportParametersDraft(ref r) => sub.extend_from_slice(r),
+            ServerExtension::EncryptedClientHello(ref r) => r.encode(&mut sub),
             ServerExtension::Unknown(ref r) => r.encode(&mut sub),
         }
 
@@ -823,6 +826,9 @@ impl Codec for ServerExtension {
             }
             ExtensionType::TransportParametersDraft => {
                 ServerExtension::TransportParametersDraft(sub.rest().to_vec())
+            }
+            ExtensionType::EncryptedClientHello => {
+                ServerExtension::EncryptedClientHello(ServerEch::read(&mut sub)?)
             }
             ExtensionType::EarlyData => ServerExtension::EarlyData,
             _ => ServerExtension::Unknown(UnknownExtension::read(typ, &mut sub)),
@@ -2442,3 +2448,46 @@ impl Codec for ECHConfig {
 }
 
 declare_u16_vec!(ECHConfigList, ECHConfig);
+
+#[derive(Clone, Debug)]
+pub struct ClientEch {
+    pub cipher_suite: HpkeSymmetricCipherSuite,
+    pub config_id: u8,
+    pub enc: PayloadU16,
+    pub payload: PayloadU16,
+}
+
+impl Codec for ClientEch {
+    fn encode(&self, bytes: &mut Vec<u8>) {
+        self.cipher_suite.encode(bytes);
+        self.config_id.encode(bytes);
+        self.enc.encode(bytes);
+        self.payload.encode(bytes);
+    }
+
+    fn read(r: &mut Reader) -> Option<ClientEch> {
+        Some(ClientEch {
+            cipher_suite: HpkeSymmetricCipherSuite::read(r)?,
+            config_id: u8::read(r)?,
+            enc: PayloadU16::read(r)?,
+            payload: PayloadU16::read(r)?,
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ServerEch {
+    retry_configs: ECHConfigList,
+}
+
+impl Codec for ServerEch {
+    fn encode(&self, bytes: &mut Vec<u8>) {
+        self.retry_configs.encode(bytes);
+    }
+
+    fn read(r: &mut Reader) -> Option<ServerEch> {
+        Some(ServerEch {
+            retry_configs: ECHConfigList::read(r)?,
+        })
+    }
+}
