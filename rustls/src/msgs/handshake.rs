@@ -2498,3 +2498,29 @@ impl Codec for ServerEch {
         })
     }
 }
+
+#[derive(Clone, Debug)]
+pub struct ClientHelloOuterAAD {
+    pub cipher_suite: HpkeSymmetricCipherSuite,
+    pub config_id: u8,
+    pub enc: PayloadU16,
+    pub outer_hello: PayloadU24,
+}
+
+impl Codec for ClientHelloOuterAAD {
+    fn encode(&self, bytes: &mut Vec<u8>) {
+        self.cipher_suite.encode(bytes);
+        self.config_id.encode(bytes);
+        self.enc.encode(bytes);
+        self.outer_hello.encode(bytes);
+    }
+
+    fn read(r: &mut Reader) -> Option<ClientHelloOuterAAD> {
+        Some(ClientHelloOuterAAD {
+            cipher_suite: HpkeSymmetricCipherSuite::read(r)?,
+            config_id: u8::read(r)?,
+            enc: PayloadU16::read(r)?,
+            outer_hello: PayloadU24::read(r)?,
+        })
+    }
+}
