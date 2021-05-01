@@ -562,6 +562,7 @@ pub enum ClientExtension {
     SignedCertificateTimestampRequest,
     TransportParameters(Vec<u8>),
     TransportParametersDraft(Vec<u8>),
+    EncryptedClientHello(Vec<u8>),
     EarlyData,
     Unknown(UnknownExtension),
 }
@@ -587,6 +588,7 @@ impl ClientExtension {
             ClientExtension::SignedCertificateTimestampRequest => ExtensionType::SCT,
             ClientExtension::TransportParameters(_) => ExtensionType::TransportParameters,
             ClientExtension::TransportParametersDraft(_) => ExtensionType::TransportParametersDraft,
+            ClientExtension::EncryptedClientHello(_) => ExtensionType::EncryptedClientHello,
             ClientExtension::EarlyData => ExtensionType::EarlyData,
             ClientExtension::Unknown(ref r) => r.typ,
         }
@@ -617,6 +619,7 @@ impl Codec for ClientExtension {
             ClientExtension::CertificateStatusRequest(ref r) => r.encode(&mut sub),
             ClientExtension::TransportParameters(ref r)
             | ClientExtension::TransportParametersDraft(ref r) => sub.extend_from_slice(r),
+            ClientExtension::EncryptedClientHello(ref r) => sub.extend_from_slice(r),
             ClientExtension::Unknown(ref r) => r.encode(&mut sub),
         }
 
@@ -680,6 +683,9 @@ impl Codec for ClientExtension {
             }
             ExtensionType::TransportParametersDraft => {
                 ClientExtension::TransportParametersDraft(sub.rest().to_vec())
+            }
+            ExtensionType::EncryptedClientHello => {
+                ClientExtension::EncryptedClientHello(sub.rest().to_vec())
             }
             ExtensionType::EarlyData if !sub.any_left() => ClientExtension::EarlyData,
             _ => ClientExtension::Unknown(UnknownExtension::read(typ, &mut sub)),
