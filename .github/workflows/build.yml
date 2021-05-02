@@ -1,5 +1,9 @@
-on: [push, pull_request]
 name: rustls
+
+permissions:
+  contents: read
+
+on: [push, pull_request]
 
 jobs:
   build:
@@ -12,7 +16,7 @@ jobs:
           - stable
           - beta
           - nightly
-          - 1.47.0 # our MSRV
+          - 1.51.0 # our MSRV
         os: [ubuntu-18.04]
         # but only stable on macos/windows (slower platforms)
         include:
@@ -23,6 +27,8 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
+        with:
+          persist-credentials: false
 
       - name: Install ${{ matrix.rust }} toolchain
         uses: actions-rs/toolchain@v1
@@ -61,6 +67,8 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
+        with:
+          persist-credentials: false
 
       - name: Install stable toolchain
         uses: actions-rs/toolchain@v1
@@ -84,6 +92,8 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
+        with:
+          persist-credentials: false
 
       - name: Install nightly toolchain
         uses: actions-rs/toolchain@v1
@@ -109,6 +119,8 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
+        with:
+          persist-credentials: false
 
       - name: Install stable toolchain
         uses: actions-rs/toolchain@v1
@@ -126,6 +138,8 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
+        with:
+          persist-credentials: false
 
       - name: Install LLVM12
         run: |
@@ -160,12 +174,34 @@ jobs:
           file: final.info
           fail_ci_if_error: false
 
+
+  minver:
+    name: Check minimum versions
+    runs-on: ubuntu-18.04
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+        with:
+          persist-credentials: false
+
+      - name: Install rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+          default: true
+
+      - name: cargo test (debug; all features; -Z minimal-versions)
+        run: cargo -Z minimal-versions test --all-features
+
   format:
     name: Format
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
+        with:
+          persist-credentials: false
       - name: Install rust toolchain
         uses: actions-rs/toolchain@v1
         with:
@@ -182,6 +218,8 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
+        with:
+          persist-credentials: false
       - name: Install rust toolchain
         uses: actions-rs/toolchain@v1
         with:
@@ -192,7 +230,7 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: clippy
-          args: -p rustls -- -D warnings
+          args: -p rustls --all-features -- -D warnings
 
   clippy-nightly:
     name: Clippy (Nightly)
@@ -200,6 +238,8 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
+        with:
+          persist-credentials: false
       - name: Install rust toolchain
         uses: actions-rs/toolchain@v1
         with:
@@ -210,4 +250,4 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: clippy
-          args: -p rustls
+          args: -p rustls --all-features
