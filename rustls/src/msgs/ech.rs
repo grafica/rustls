@@ -173,7 +173,9 @@ impl EncryptedClientHello {
         hello
             .extensions
             .push(ClientExtension::make_sni(
-                self.config_contents.public_name.as_ref(),
+                self.config_contents
+                    .public_name
+                    .as_ref(),
             ));
 
         // PSK extensions are prohibited in the ClientHelloOuter.

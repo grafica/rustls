@@ -156,8 +156,16 @@ pub(super) fn handle_server_hello(
     let hash_at_client_recvd_server_hello = transcript.get_current_hash();
 
     // Check if ECH was accepted
-    if let ServerIdentity::EncryptedClientHello(_ech) = &server_id {
-
+    if let ServerIdentity::EncryptedClientHello(ech) = &server_id {
+        println!("Calculate transcript.");
+        let mut confirmation_transcript = &mut HandshakeHash::new();
+        confirmation_transcript.start_hash(suite.get_hash());
+        confirmation_transcript =
+            confirmation_transcript.update_raw(&ech.encoded_inner.as_ref().unwrap());
+        let mut encoded_sh = Vec::new();
+        server_hello.encode(&mut encoded_sh);
+        confirmation_transcript = confirmation_transcript.update_raw(&mut encoded_sh);
+        println!("end of Calculate transcript.");
     }
 
     let _maybe_write_key = if !cx.data.early_data.is_enabled() {
