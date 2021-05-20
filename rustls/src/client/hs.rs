@@ -405,9 +405,9 @@ fn emit_client_hello_for_retry(
             outer_payload
                 .extensions
                 .push(ClientExtension::EncryptedClientHello(client_ech));
-            hello_details
-                .sent_extensions
-                .push(ExtensionType::EncryptedClientHello);
+            //hello_details
+            //    .sent_extensions
+             //   .push(ExtensionType::EncryptedClientHello);
             outer_payload
         }
     };
@@ -635,8 +635,20 @@ impl State for ExpectServerHello {
         }
 
         // Start our handshake hash, and input the server-hello.
-        self.transcript
-            .start_hash(suite.get_hash());
+
+        let (randoms, transcript) = match &self.server_id {
+            ServerIdentity::Hostname(_) => {
+                self.transcript
+                    .start_hash(suite.get_hash());
+                (self.randoms, self.transcript)
+            },
+            ServerIdentity::EncryptedClientHello(ech) => {
+                println!("Calculate transcript.");
+                ech.confirm_ech(&*self.config.key_log, server_hello, &self.randoms, suite.get_hash())
+            }
+        };
+        self.transcript = transcript;
+        self.randoms = randoms;
         self.transcript.add_message(&m);
 
         // For TLS1.3, start message encryption using

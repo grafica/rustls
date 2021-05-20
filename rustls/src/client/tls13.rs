@@ -153,20 +153,17 @@ pub(super) fn handle_server_hello(
     // the two halves will have different record layer protections.  Disallow this.
     cx.common.check_aligned_handshake()?;
 
-    let hash_at_client_recvd_server_hello = transcript.get_current_hash();
+    /*
+        let (randoms, transcript) = match &server_id {
+        ServerIdentity::Hostname(_) => (randoms, transcript),
+        ServerIdentity::EncryptedClientHello(ech) => {
+            println!("Calculate transcript.");
+            ech.confirm_ech( &*config.key_log, &mut key_schedule, server_hello, &randoms, suite.get_hash())
+        }
+    };
+     */
 
-    // Check if ECH was accepted
-    if let ServerIdentity::EncryptedClientHello(ech) = &server_id {
-        println!("Calculate transcript.");
-        let mut confirmation_transcript = &mut HandshakeHash::new();
-        confirmation_transcript.start_hash(suite.get_hash());
-        confirmation_transcript =
-            confirmation_transcript.update_raw(&ech.encoded_inner.as_ref().unwrap());
-        let mut encoded_sh = Vec::new();
-        server_hello.encode(&mut encoded_sh);
-        confirmation_transcript = confirmation_transcript.update_raw(&mut encoded_sh);
-        println!("end of Calculate transcript.");
-    }
+    let hash_at_client_recvd_server_hello = transcript.get_current_hash();
 
     let _maybe_write_key = if !cx.data.early_data.is_enabled() {
         // Set the client encryption key for handshakes if early data is not used

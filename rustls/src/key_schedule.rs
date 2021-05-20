@@ -180,6 +180,22 @@ impl KeyScheduleHandshake {
         secret
     }
 
+    pub fn server_ech_confirmed_traffic_secret(
+        &mut self,
+        hs_hash: &Digest,
+        key_log: &dyn KeyLog,
+        client_random: &[u8; 32],
+    ) -> hkdf::Prk {
+        let secret = self.ks.derive_logged_secret(
+            SecretKind::ServerECHConfirmedTrafficSecret,
+            hs_hash.as_ref(),
+            key_log,
+            client_random,
+        );
+        self.current_server_traffic_secret = Some(secret.clone());
+        secret
+    }
+
     pub fn sign_server_finish(&self, hs_hash: &Digest) -> hmac::Tag {
         self.ks.sign_finish(
             self.current_server_traffic_secret

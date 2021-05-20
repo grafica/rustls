@@ -1,15 +1,20 @@
+use crate::conn::ConnectionRandoms;
+use crate::hash_hs::HandshakeHash;
 use crate::msgs::codec::{Codec, Reader};
 use crate::msgs::enums::ExtensionType;
 use crate::msgs::handshake::ClientExtension::EchOuterExtensions;
 use crate::msgs::handshake::{
     ClientExtension, ClientHelloPayload, EchConfig, EchConfigContents, EchConfigList,
-    HpkeSymmetricCipherSuite, Random, SessionID,
+    HpkeSymmetricCipherSuite, Random, ServerHelloPayload, SessionID,
 };
-use crate::rand;
-use crate::Error;
+use crate::{Error, KeyLog};
+use crate::{rand, ClientConfig};
 use hpke_rs::prelude::*;
 use hpke_rs::{Hpke, Mode};
+use std::sync::Arc;
 use webpki;
+use crate::key_schedule::KeyScheduleHandshake;
+use crate::msgs::base::PayloadU24;
 
 #[allow(dead_code)]
 const HPKE_INFO: &[u8; 8] = b"tls ech\0";
@@ -160,6 +165,8 @@ impl EncryptedClientHello {
         // Create the buffer to be encrypted.
         let mut encoded_hello = Vec::new();
         hello.encode(&mut encoded_hello);
+        println!("bytes: {:?}", encoded_hello);
+
         self.encoded_inner = Some(encoded_hello);
 
         // Remove the two ClientHelloInner-only extensions.
@@ -191,6 +198,46 @@ impl EncryptedClientHello {
         hello.extensions.append(&mut outers);
 
         hello
+    }
+
+    pub(crate) fn confirm_ech(
+        &self,
+        key_log: &dyn KeyLog,
+        server_hello: &ServerHelloPayload,
+        randoms: &ConnectionRandoms,
+        alg: &'static ring::digest::Algorithm,
+    ) -> (ConnectionRandoms, HandshakeHash) {
+        let mut confirmation_transcript = HandshakeHash::new();
+        confirmation_transcript.start_hash(alg);
+        confirmation_transcript.update_raw(&self.encoded_inner.as_ref().unwrap());
+        let mut encoded_sh = Vec::new();
+        server_hello.encode_for_ech_confirmation(&mut encoded_sh);
+        confirmation_transcript.update_raw(&mut encoded_sh);
+        /*let key_schedule = KeyScheduleHandshake::
+        key_schedule.server_ech_confirmed_traffic_secret(
+            &confirmation_transcript.get_current_hash(),
+            key_log,
+            &self.inner_random,
+        );*/
+
+        // TODO: Actually confirm
+
+        let mut inner_transcript = HandshakeHash::new();
+        inner_transcript.start_hash(alg);
+
+        let mut transcript_bytes = Vec::new();
+        transcript_bytes.extend_from_slice(&[1u8, 0, 1, 8]);
+
+        println!("bytes: {:?}", self.encoded_inner.as_ref().unwrap().to_vec());
+        inner_transcript.update_raw(&transcript_bytes);
+        inner_transcript.update_raw(&self.encoded_inner.as_ref().unwrap());
+        let inner_randoms = ConnectionRandoms {
+            we_are_client: true,
+            client: self.inner_random,
+            server: randoms.server,
+        };
+
+        (inner_randoms, inner_transcript)
     }
 }
 
