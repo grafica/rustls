@@ -419,10 +419,12 @@ fn emit_client_hello_for_retry(
 
     let early_key_schedule = if let Some(resuming) = fill_in_binder {
         let schedule = tls13::fill_in_psk_binder(&resuming, &transcript, &mut chp);
+        println!("early_key_schedule added to transcript");
         Some((resuming, schedule))
     } else {
         None
     };
+
 
     let ch = Message {
         // "This value MUST be set to 0x0303 for all records generated
@@ -449,6 +451,7 @@ fn emit_client_hello_for_retry(
 
     // Calculate the hash of ClientHello and use it to derive EarlyTrafficSecret
     let early_key_schedule = early_key_schedule.map(|(resuming, schedule)| {
+        println!("derive early traffic secret");
         if !cx.data.early_data.is_enabled() {
             return schedule;
         }
@@ -832,6 +835,7 @@ impl ExpectServerHelloOrHelloRetryRequest {
 
 impl State for ExpectServerHelloOrHelloRetryRequest {
     fn handle(self: Box<Self>, cx: &mut ClientContext<'_>, m: Message) -> NextStateOrError {
+        println!("ExpectServerHelloOrHelloRetryRequest.handle");
         check_message(
             &m,
             &[ContentType::Handshake],

@@ -1,13 +1,10 @@
 use crate::conn::ConnectionRandoms;
 use crate::hash_hs::HandshakeHash;
 use crate::msgs::codec::{Codec, Reader};
-use crate::msgs::enums::ExtensionType;
+use crate::msgs::enums::{ExtensionType, HandshakeType};
 use crate::msgs::handshake::ClientExtension::EchOuterExtensions;
-use crate::msgs::handshake::{
-    ClientExtension, ClientHelloPayload, EchConfig, EchConfigContents, EchConfigList,
-    HpkeSymmetricCipherSuite, Random, ServerHelloPayload, SessionID,
-};
-use crate::{Error, KeyLog};
+use crate::msgs::handshake::{ClientExtension, ClientHelloPayload, EchConfig, EchConfigContents, EchConfigList, HpkeSymmetricCipherSuite, Random, ServerHelloPayload, SessionID, HandshakeMessagePayload, HandshakePayload};
+use crate::{Error, KeyLog, ProtocolVersion};
 use crate::{rand, ClientConfig};
 use hpke_rs::prelude::*;
 use hpke_rs::{Hpke, Mode};
@@ -15,6 +12,7 @@ use std::sync::Arc;
 use webpki;
 use crate::key_schedule::KeyScheduleHandshake;
 use crate::msgs::base::PayloadU24;
+use crate::msgs::message::{Message, MessagePayload};
 
 #[allow(dead_code)]
 const HPKE_INFO: &[u8; 8] = b"tls ech\0";
@@ -161,11 +159,11 @@ impl EncryptedClientHello {
 
         // The random value must be preserved across HRR for the ClientHelloInner
         hello.random = Random::from(self.inner_random);
-
+        println!("inner hello: {:#?}", hello);
         // Create the buffer to be encrypted.
         let mut encoded_hello = Vec::new();
         hello.encode(&mut encoded_hello);
-        println!("bytes: {:?}", encoded_hello);
+        println!("encoded hello bytes: {:?}", encoded_hello);
 
         self.encoded_inner = Some(encoded_hello);
 
@@ -224,13 +222,24 @@ impl EncryptedClientHello {
 
         let mut inner_transcript = HandshakeHash::new();
         inner_transcript.start_hash(alg);
+        println!("hash: {:?}", alg);
 
-        let mut transcript_bytes = Vec::new();
-        transcript_bytes.extend_from_slice(&[1u8, 0, 1, 8]);
+        let encoded = self.encoded_inner.as_ref().unwrap();
+        let payload = ClientHelloPayload::read_bytes(encoded.as_slice()).unwrap();
+        println!("inner hello: {:#?}", payload);
 
-        println!("bytes: {:?}", self.encoded_inner.as_ref().unwrap().to_vec());
-        inner_transcript.update_raw(&transcript_bytes);
-        inner_transcript.update_raw(&self.encoded_inner.as_ref().unwrap());
+        let mut chp = HandshakeMessagePayload {
+            typ: HandshakeType::ClientHello,
+            payload: HandshakePayload::ClientHello(payload),
+        };
+        let ch = Message {
+            // "This value MUST be set to 0x0303 for all records generated
+            //  by a TLS 1.3 implementation other than an initial ClientHello
+            //  (i.e., one not generated after a HelloRetryRequest)"
+            version: ProtocolVersion::TLSv1_0,
+            payload: MessagePayload::Handshake(chp),
+        };
+        inner_transcript.add_message(&ch);
         let inner_randoms = ConnectionRandoms {
             we_are_client: true,
             client: self.inner_random,
@@ -253,6 +262,7 @@ mod test {
     use crate::ProtocolVersion;
     use base64;
     use webpki::DnsNameRef;
+    use crate::internal::msgs::handshake::HandshakePayload::ClientHello;
 
     const BASE64_ECHCONFIGS: &str = "AEj+CgBEuwAgACCYKvleXJQ16RUURAsG1qTRN70ob5ewCDH6NuzE97K8MAAEAAEAAQAAABNjbG91ZGZsYXJlLWVzbmkuY29tAAA=";
 
@@ -479,6 +489,21 @@ mod test {
                     .extensions
                     .push(ClientExtension::EncryptedClientHello(client_ech));
             }
+        }
+    }
+
+    #[test]
+    fn test_hello_encoding() {
+        let ech_config_list = "AEj+CgBEAQAgACDQmv0Ys9bmdUDb0kfmFUwNIasNbyzbFu9RYmWNVJ+iAQAEAAEAAQAAABNjbG91ZGZsYXJlLWVzbmkuY29tAAA=";
+        let hello_base: Vec<u8> =   vec![1,0,1,4,3,3,241,156,177,227,148,237,84,44,11,125,121,67,174,166,117,222,27,146,204,201,165,206,117,25,95,131,247,69,30,164,203,82,32,98,9,215,90,54,11,222,185,45,118,15,211,164,37,244,17,211,109,133,204,175,230,224,52,122,2,138,152,211,152,85,179,0,38,192,47,192,48,192,43,192,44,204,168,204,169,192,19,192,9,192,20,192,10,0,156,0,157,0,47,0,53,192,18,0,10,19,1,19,3,19,2,1,0,0,149,0,0,0,26,0,24,0,0,21,99,114,121,112,116,111,46,99,108,111,117,100,102,108,97,114,101,46,99,111,109,0,5,0,5,1,0,0,0,0,0,10,0,10,0,8,0,29,0,23,0,24,0,25,0,11,0,2,1,0,0,13,0,28,0,26,8,4,4,3,8,7,8,5,8,6,4,1,5,1,6,1,5,3,6,3,2,1,2,3,254,97,255,1,0,1,0,0,18,0,0,0,43,0,3,2,3,4,0,51,0,38,0,36,0,29,0,32,53,98,122,180,33,196,73,33,36,164,34,201,26,121,93,59,196,17,66,149,47,254,90,55,85,88,170,134,204,173,130,111];
+        let hello_outer: Vec<u8> = vec![1,0,2,10,3,3,241,156,177,227,148,237,84,44,11,125,121,67,174,166,117,222,27,146,204,201,165,206,117,25,95,131,247,69,30,164,203,82,32,98,9,215,90,54,11,222,185,45,118,15,211,164,37,244,17,211,109,133,204,175,230,224,52,122,2,138,152,211,152,85,179,0,38,192,47,192,48,192,43,192,44,204,168,204,169,192,19,192,9,192,20,192,10,0,156,0,157,0,47,0,53,192,18,0,10,19,1,19,3,19,2,1,0,1,155,254,10,0,254,0,1,0,1,1,0,32,148,165,229,109,94,130,11,15,234,203,87,82,105,168,75,243,126,196,12,32,124,215,51,86,232,214,206,158,108,68,228,96,0,213,202,83,245,186,226,201,100,65,225,18,5,5,153,114,203,121,231,36,217,188,161,22,58,37,2,54,127,179,249,210,169,115,138,248,242,89,37,8,82,253,84,41,18,17,143,5,149,41,254,46,249,167,230,162,113,6,172,7,183,125,23,90,75,68,226,89,149,158,142,169,173,63,24,122,244,124,36,171,196,84,43,144,99,164,224,148,41,74,98,103,237,163,182,14,65,89,242,216,131,105,15,174,115,59,109,113,54,72,166,182,80,63,242,156,32,19,33,219,80,90,172,6,208,140,234,157,89,85,54,35,107,234,197,18,77,193,128,236,91,71,141,39,249,32,166,137,116,210,85,59,6,51,30,97,140,23,181,252,191,196,254,31,175,251,35,183,236,25,233,39,245,115,62,78,83,197,183,122,163,117,120,192,36,95,31,69,228,101,247,26,244,148,106,126,213,85,173,216,111,107,187,179,243,198,90,111,7,219,102,57,94,23,20,0,0,0,24,0,22,0,0,19,99,108,111,117,100,102,108,97,114,101,45,101,115,110,105,46,99,111,109,0,5,0,5,1,0,0,0,0,0,10,0,10,0,8,0,29,0,23,0,24,0,25,0,11,0,2,1,0,0,13,0,28,0,26,8,4,4,3,8,7,8,5,8,6,4,1,5,1,6,1,5,3,6,3,2,1,2,3,254,97,255,1,0,1,0,0,18,0,0,0,43,0,9,8,3,4,3,3,3,2,3,1,0,51,0,38,0,36,0,29,0,32,53,98,122,180,33,196,73,33,36,164,34,201,26,121,93,59,196,17,66,149,47,254,90,55,85,88,170,134,204,173,130,111];
+        let hello_inner: Vec<u8> =  vec![1,0,1,8,3,3,249,151,214,12,175,208,239,159,52,62,98,149,86,99,138,200,48,254,9,194,223,234,59,234,110,150,223,87,193,238,134,216,32,98,9,215,90,54,11,222,185,45,118,15,211,164,37,244,17,211,109,133,204,175,230,224,52,122,2,138,152,211,152,85,179,0,38,192,47,192,48,192,43,192,44,204,168,204,169,192,19,192,9,192,20,192,10,0,156,0,157,0,47,0,53,192,18,0,10,19,1,19,3,19,2,1,0,0,153,218,9,0,0,0,0,0,26,0,24,0,0,21,99,114,121,112,116,111,46,99,108,111,117,100,102,108,97,114,101,46,99,111,109,0,5,0,5,1,0,0,0,0,0,10,0,10,0,8,0,29,0,23,0,24,0,25,0,11,0,2,1,0,0,13,0,28,0,26,8,4,4,3,8,7,8,5,8,6,4,1,5,1,6,1,5,3,6,3,2,1,2,3,254,97,255,1,0,1,0,0,18,0,0,0,43,0,3,2,3,4,0,51,0,38,0,36,0,29,0,32,53,98,122,180,33,196,73,33,36,164,34,201,26,121,93,59,196,17,66,149,47,254,90,55,85,88,170,134,204,173,130,111];
+
+        for vec in &[hello_base, hello_outer, hello_inner] {
+            let deserialized = HandshakeMessagePayload::read(&mut Reader::init(vec.as_slice())).unwrap();
+            let mut serialized: Vec<u8> = Vec::new();
+            deserialized.encode(&mut serialized);
+            assert_eq!(*vec, serialized);
         }
     }
 }

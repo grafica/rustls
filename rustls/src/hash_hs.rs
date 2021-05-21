@@ -49,6 +49,7 @@ impl HandshakeHash {
 
     /// We now know what hash function the verify_data will use.
     pub fn start_hash(&mut self, alg: &'static digest::Algorithm) -> bool {
+        println!("start_hash");
         match &self.ctx {
             None => {}
             Some(ctx) => {
@@ -75,8 +76,11 @@ impl HandshakeHash {
 
     /// Hash/buffer a handshake message.
     pub fn add_message(&mut self, m: &Message) -> &mut HandshakeHash {
+        println!("add message");
         if let MessagePayload::Handshake(hs) = &m.payload {
             let buf = hs.get_encoding();
+            //println!("message buf: {:?}", buf);
+            println!("buf len: {:?}", buf.len());
             self.update_raw(&buf);
         }
         self

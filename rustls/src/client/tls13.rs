@@ -72,6 +72,7 @@ pub(super) fn handle_server_hello(
     our_key_share: kx::KeyExchange,
     mut sent_tls13_fake_ccs: bool,
 ) -> hs::NextStateOrError {
+    println!("handle_server_hello");
     if !suite.usable_for_version(ProtocolVersion::TLSv1_3) {
         return Err(cx
             .common
@@ -134,7 +135,7 @@ pub(super) fn handle_server_hello(
         }
         early_key_schedule.into_handshake(&shared.shared_secret)
     } else {
-        debug!("Not resuming");
+        println!("Not resuming");
         // Discard the early data key schedule.
         cx.data.early_data.rejected();
         cx.common.early_traffic = false;
@@ -163,6 +164,7 @@ pub(super) fn handle_server_hello(
     };
      */
 
+    println!("transcript: {:?}", transcript.get_current_hash());
     let hash_at_client_recvd_server_hello = transcript.get_current_hash();
 
     let _maybe_write_key = if !cx.data.early_data.is_enabled() {
@@ -426,6 +428,7 @@ struct ExpectEncryptedExtensions {
 
 impl hs::State for ExpectEncryptedExtensions {
     fn handle(mut self: Box<Self>, cx: &mut ClientContext<'_>, m: Message) -> hs::NextStateOrError {
+        println!("handle ExpectEncryptedExtensions");
         let exts = require_handshake_msg!(
             m,
             HandshakeType::EncryptedExtensions,
