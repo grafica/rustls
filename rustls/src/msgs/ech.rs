@@ -151,7 +151,7 @@ impl EncryptedClientHello {
         // Add the inner SNI
         inner_hello
             .extensions
-            .insert(0,ClientExtension::make_sni(self.hostname.as_ref()));
+            .insert(0, ClientExtension::make_sni(self.hostname.as_ref()));
         inner_hello
             .extensions
             .insert(0, ClientExtension::ClientHelloInnerIndication);
@@ -197,13 +197,14 @@ impl EncryptedClientHello {
         });
 
         // Add the outer SNI
-        hello
-            .extensions
-            .insert(0,ClientExtension::make_sni(
+        hello.extensions.insert(
+            0,
+            ClientExtension::make_sni(
                 self.config_contents
                     .public_name
                     .as_ref(),
-            ));
+            ),
+        );
 
         // PSK extensions are prohibited in the ClientHelloOuter.
         let index = hello
@@ -248,8 +249,9 @@ impl EncryptedClientHello {
         };
 
         hello
-            .extensions.insert(0, ClientExtension::EncryptedClientHello(client_ech));
-            //.push();
+            .extensions
+            .insert(0, ClientExtension::EncryptedClientHello(client_ech));
+        //.push();
         //hello_details
         //    .sent_extensions
         //   .push(ExtensionType::EncryptedClientHello);
@@ -297,8 +299,6 @@ impl EncryptedClientHello {
     }
 }
 
-
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -312,6 +312,7 @@ mod test {
     use crate::ProtocolVersion;
     use base64;
     use webpki::DnsNameRef;
+    use std::convert::TryInto;
 
     const BASE64_ECHCONFIGS: &str = "AEj+CgBEuwAgACCYKvleXJQ16RUURAsG1qTRN70ob5ewCDH6NuzE97K8MAAEAAEAAQAAABNjbG91ZGZsYXJlLWVzbmkuY29tAAA=";
     fn get_ech_config(s: &str) -> (EchConfigList, Vec<u8>) {
@@ -416,131 +417,138 @@ mod test {
         }
     }
 
-    /*
-       #[test]
-       fn test_encode_client_hello_inner() {
-           let ext_vecs = vec![vec![KeyShare, ECPointFormats, EllipticCurves], vec![]];
-           for outer_exts in ext_vecs {
-               let original_hello = get_sample_clienthellopayload();
-               let original_ext_length = original_hello.extensions.len();
-               let original_session_id = original_hello.session_id;
-               let original_random = original_hello.random.clone();
-               let (_configs, bytes) = get_ech_config();
-               let dns_name = DnsNameRef::try_from_ascii(b"test.example.com").unwrap();
-               let mut ech = Box::new(
-                   EncryptedClientHello::with_host_and_config_list(dns_name, &bytes).unwrap(),
-               );
-               ech.compressed_extensions
-                   .extend_from_slice(outer_exts.as_slice());
-               let hello = ech.encode(original_hello);
-               assert_eq!(hello.session_id, original_session_id);
-               assert_eq!(hello.random, original_random);
-               // Return hello should not have a PSK
-               assert!(
-                   hello
-                       .find_extension(ExtensionType::PreSharedKey)
-                       .is_none()
-               );
+    #[test]
+    fn test_encode_client_hello_inner() {
+        let ext_vecs = vec![vec![KeyShare, ECPointFormats, EllipticCurves], vec![]];
+        for outer_exts in ext_vecs {
+            let original_hello = get_sample_clienthellopayload();
+            let original_ext_length = original_hello.extensions.len();
+            let original_session_id = original_hello.session_id;
+            let original_random = original_hello.random.clone();
+            let (_configs, bytes) = get_ech_config(BASE64_ECHCONFIGS);
+            let dns_name = DnsNameRef::try_from_ascii(b"test.example.com").unwrap();
+            let mut ech = Box::new(
+                EncryptedClientHello::with_host_and_config_list(dns_name, &bytes).unwrap(),
+            );
+            ech.compressed_extensions
+                .extend_from_slice(outer_exts.as_slice());
+            let hmp = ech.encode(original_hello);
+            let hello: ClientHelloPayload = match hmp.payload {
+                ClientHello(chp) => chp,
+                _ => unreachable!(),
+            };
+            assert_eq!(hello.session_id, original_session_id);
+            assert_eq!(hello.random, original_random);
+            // Return hello should not have a PSK
+            assert!(
+                hello
+                    .find_extension(ExtensionType::PreSharedKey)
+                    .is_none()
+            );
 
-               let mut reader = Reader::init(&ech.encoded_inner.as_ref().unwrap());
-               let decoded = ClientHelloPayload::read(&mut reader).unwrap();
-               assert_eq!(decoded.session_id, SessionID::empty());
-               assert_ne!(decoded.session_id, original_session_id);
-               assert_ne!(decoded.random, original_random);
+            /*
+            let mut reader = Reader::init(&ech.encoded_inner.as_ref().unwrap());
+            let decoded = ClientHelloPayload::read(&mut reader).unwrap();
+            assert_eq!(decoded.session_id, SessionID::empty());
+            assert_ne!(decoded.session_id, original_session_id);
+            assert_ne!(decoded.random, original_random);
 
-               // The compressed extensions, plus two for the outer_extensions and ech_is_inner.
-               let expected_length = original_ext_length - outer_exts.len() + 2;
-               assert_eq!(decoded.extensions.len(), expected_length);
-               let decoded_outer = decoded
-                   .find_extension(ExtensionType::EchOuterExtensions)
-                   .unwrap();
-               let outers = match decoded_outer {
-                   EchOuterExtensions(outer_exts) => Some(outer_exts),
-                   _ => None,
-               }
-               .unwrap();
-               assert_eq!(outers.len(), outer_exts.len());
-               for ext_type in outers.iter() {
-                   assert!(outer_exts.contains(ext_type));
-               }
+            // The compressed extensions, plus two for the outer_extensions and ech_is_inner.
+            let expected_length = original_ext_length - outer_exts.len() + 2;
+            assert_eq!(decoded.extensions.len(), expected_length);
+            let decoded_outer = decoded
+                .find_extension(ExtensionType::EchOuterExtensions)
+                .unwrap();
+            let outers = match decoded_outer {
+                EchOuterExtensions(outer_exts) => Some(outer_exts),
+                _ => None,
+            }
+            .unwrap();
+            assert_eq!(outers.len(), outer_exts.len());
+            for ext_type in outers.iter() {
+                assert!(outer_exts.contains(ext_type));
+            }
 
-               // All of the old extensions except for PSK
-               let old_len = original_ext_length - 1;
-               assert_eq!(hello.extensions.len(), old_len);
-               assert!(
-                   decoded
-                       .find_extension(ExtensionType::PreSharedKey)
-                       .is_some()
-               );
-               assert!(
-                   decoded
-                       .find_extension(ExtensionType::EchIsInner)
-                       .is_some()
-               );
-           }
-       }
+            // All of the old extensions except for PSK
+            let old_len = original_ext_length - 1;
+            assert_eq!(hello.extensions.len(), old_len);
+            assert!(
+                decoded
+                    .find_extension(ExtensionType::PreSharedKey)
+                    .is_some()
+            );
+            assert!(
+                decoded
+                    .find_extension(ExtensionType::EchIsInner)
+                    .is_some()
+            );*/
+        }
+    }
 
-       #[test]
-       fn test_seal() {
-           let (ech_list, bytes) = get_ech_config();
-           for config in ech_list {
-               let dns_name = DnsNameRef::try_from_ascii(b"test.example.com").unwrap();
-               for suite in &config
-                   .contents
-                   .hpke_key_config
-                   .hpke_symmetric_cipher_suites
-               {
-                   let original_hello = get_sample_clienthellopayload();
-                   let mut ech = Box::new(
-                       EncryptedClientHello::with_host_and_config_list(dns_name, &bytes).unwrap(),
-                   );
-                   let outer_exts = vec![KeyShare, ECPointFormats, EllipticCurves];
-                   ech.compressed_extensions
-                       .extend_from_slice(outer_exts.as_slice());
-                   let mut hello = ech.encode(original_hello);
-                   let pk_r = ech.public_key();
-                   let (enc, mut context) = ech
-                       .hpke
-                       .setup_sender(&pk_r, HPKE_INFO, None, None, None)
-                       .unwrap();
-                   let mut encoded_hello = Vec::new();
-                   hello.encode(&mut encoded_hello);
-                   let outer_aad = ClientHelloOuterAAD {
-                       cipher_suite: suite.clone(),
-                       config_id: config
-                           .contents
-                           .hpke_key_config
-                           .config_id,
-                       enc: PayloadU16::new(enc.clone()),
-                       outer_hello: PayloadU24::new(encoded_hello),
-                   };
+    #[test]
+    fn test_seal() {
+        let (ech_list, bytes) = get_ech_config(BASE64_ECHCONFIGS);
+        for config in ech_list {
+            let dns_name = DnsNameRef::try_from_ascii(b"test.example.com").unwrap();
+            for suite in &config
+                .contents
+                .hpke_key_config
+                .hpke_symmetric_cipher_suites
+            {
+                let original_hello = get_sample_clienthellopayload();
+                let mut ech = Box::new(
+                    EncryptedClientHello::with_host_and_config_list(dns_name, &bytes).unwrap(),
+                );
+                let outer_exts = vec![KeyShare, ECPointFormats, EllipticCurves];
+                ech.compressed_extensions
+                    .extend_from_slice(outer_exts.as_slice());
+                let mut hello = ech.encode(original_hello);
+                let pk_r = ech.public_key();
+                let (enc, mut context) = ech
+                    .hpke
+                    .setup_sender(&pk_r, HPKE_INFO, None, None, None)
+                    .unwrap();
+                let mut encoded_hello = Vec::new();
+                hello.encode(&mut encoded_hello);
+                let outer_aad = ClientHelloOuterAAD {
+                    cipher_suite: suite.clone(),
+                    config_id: config
+                        .contents
+                        .hpke_key_config
+                        .config_id,
+                    enc: PayloadU16::new(enc.clone()),
+                    outer_hello: PayloadU24::new(encoded_hello),
+                };
 
-                   let mut aad = Vec::new();
-                   outer_aad.encode(&mut aad);
+                let mut aad = Vec::new();
+                outer_aad.encode(&mut aad);
 
-                   let encoded_inner = ech.encoded_inner.as_ref().unwrap();
-                   let payload = context
-                       .seal(aad.as_slice(), encoded_inner)
-                       .unwrap();
-                   assert!(payload.len() > 0);
+                /*
+                let encoded_inner = ech.encoded_inner.as_ref().unwrap();
+                let payload = context
+                    .seal(aad.as_slice(), encoded_inner)
+                    .unwrap();
+                assert!(payload.len() > 0);
 
-                   let client_ech = ClientEch {
-                       cipher_suite: suite.clone(),
-                       config_id: config
-                           .contents
-                           .hpke_key_config
-                           .config_id,
-                       enc: PayloadU16::new(enc),
-                       payload: PayloadU16::new(payload),
-                   };
+                let client_ech = ClientEch {
+                    cipher_suite: suite.clone(),
+                    config_id: config
+                        .contents
+                        .hpke_key_config
+                        .config_id,
+                    enc: PayloadU16::new(enc),
+                    payload: PayloadU16::new(payload),
+                };
 
-                   hello
-                       .extensions
-                       .push(ClientExtension::EncryptedClientHello(client_ech));
-               }
-           }
-       }
-    */
+                hello
+                    .extensions
+                    .push(ClientExtension::EncryptedClientHello(client_ech));
+
+                 */
+            }
+        }
+    }
+
     #[test]
     fn test_hello_encoding() {
         let ech_config_list = "AEj+CgBEAQAgACDQmv0Ys9bmdUDb0kfmFUwNIasNbyzbFu9RYmWNVJ+iAQAEAAEAAQAAABNjbG91ZGZsYXJlLWVzbmkuY29tAAA=";
@@ -616,36 +624,32 @@ mod test {
         let (_ech_configs, bytes) = get_ech_config(ech_config_list);
         let host = webpki::DnsNameRef::try_from_ascii(b"crypto.cloudflare.com").unwrap();
         let mut ech = EncryptedClientHello::with_host_and_config_list(host, &bytes).unwrap();
-        let base =
-            HandshakeMessagePayload::read(&mut Reader::init(hello_base.as_slice())).unwrap();
+        let base = HandshakeMessagePayload::read(&mut Reader::init(hello_base.as_slice())).unwrap();
         let expected_inner =
             HandshakeMessagePayload::read(&mut Reader::init(hello_inner.as_slice())).unwrap();
         let expected_outer =
             HandshakeMessagePayload::read(&mut Reader::init(hello_outer.as_slice())).unwrap();
 
-        let payload = match  base.payload {
+        let payload = match base.payload {
             ClientHello(chp) => chp,
-            _ => unreachable!()
+            _ => unreachable!(),
         };
 
         let inner_payload = match expected_inner.payload {
             ClientHello(ref chp) => chp,
-            _ => unreachable!()
+            _ => unreachable!(),
         };
 
         let mut test_random = [0u8; 32];
-        inner_payload.random.write_slice(&mut test_random);
+        inner_payload
+            .random
+            .write_slice(&mut test_random);
         ech.inner_random = test_random;
         ech.compressed_extensions = vec![KeyShare];
         let outer = ech.encode(payload);
         let inner = ech.inner_message.unwrap();
         let inner_payload = match inner.payload {
-            MessagePayload::Handshake(hs) => {
-                match hs.payload {
-                    ClientHello(chp) => chp,
-                    _ => unreachable!(),
-                }
-            },
+            MessagePayload::Handshake(hmp) => hmp,
             _ => unreachable!(),
         };
 
@@ -664,18 +668,24 @@ mod test {
 
         let outer_payload = match expected_outer.payload {
             ClientHello(ref chp) => chp,
-            _ => unreachable!()
+            _ => unreachable!(),
         };
 
         let expected_payload = match expected_outer.payload {
             ClientHello(ref chp) => chp,
-            _ => unreachable!()
+            _ => unreachable!(),
         };
 
-        assert_eq!(expected_payload.client_version, outer_payload.client_version);
+        assert_eq!(
+            expected_payload.client_version,
+            outer_payload.client_version
+        );
         assert_eq!(expected_payload.random, outer_payload.random);
         assert_eq!(expected_payload.session_id, outer_payload.session_id);
         assert_eq!(expected_payload.cipher_suites, outer_payload.cipher_suites);
-        assert_eq!(expected_payload.compression_methods, outer_payload.compression_methods);
+        assert_eq!(
+            expected_payload.compression_methods,
+            outer_payload.compression_methods
+        );
     }
 }
