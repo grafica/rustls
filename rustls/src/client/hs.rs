@@ -364,57 +364,12 @@ fn emit_client_hello_for_retry(
         extensions: exts,
     };
 
-    let payload = match server_id {
-        ServerIdentity::Hostname(_) => initial_payload,
-        ServerIdentity::EncryptedClientHello(ref mut ech) => {
-            let mut outer_payload = ech.encode(initial_payload);
-            let pk_r = ech.public_key();
-            let (enc, mut context) = ech
-                .hpke
-                .setup_sender(&pk_r, ech.hpke_info.as_slice(), None, None, None)
-                .unwrap();
-            let mut encoded_outer = Vec::new();
-            outer_payload.encode(&mut encoded_outer);
-            let outer_aad = ClientHelloOuterAAD {
-                cipher_suite: ech.suite.clone(),
-                config_id: ech
-                    .config_contents
-                    .hpke_key_config
-                    .config_id,
-                enc: PayloadU16::new(enc.clone()),
-                outer_hello: PayloadU24::new(encoded_outer),
-            };
-
-            let mut aad = Vec::new();
-            outer_aad.encode(&mut aad);
-
-            let encoded = ech.encoded_inner.as_ref().unwrap();
-            let payload = context
-                .seal(aad.as_slice(), encoded)
-                .unwrap();
-            let client_ech = ClientEch {
-                cipher_suite: ech.suite.clone(),
-                config_id: ech
-                    .config_contents
-                    .hpke_key_config
-                    .config_id,
-                enc: PayloadU16::new(enc),
-                payload: PayloadU16::new(payload),
-            };
-
-            outer_payload
-                .extensions
-                .push(ClientExtension::EncryptedClientHello(client_ech));
-            //hello_details
-            //    .sent_extensions
-             //   .push(ExtensionType::EncryptedClientHello);
-            outer_payload
-        }
-    };
-
-    let mut chp = HandshakeMessagePayload {
-        typ: HandshakeType::ClientHello,
-        payload: HandshakePayload::ClientHello(payload),
+    let mut chp = match server_id {
+        ServerIdentity::Hostname(_) => HandshakeMessagePayload {
+            typ: HandshakeType::ClientHello,
+            payload: HandshakePayload::ClientHello(initial_payload),
+        },
+        ServerIdentity::EncryptedClientHello(ref mut ech) => ech.encode(initial_payload),
     };
 
     let early_key_schedule = if let Some(resuming) = fill_in_binder {
@@ -644,10 +599,15 @@ impl State for ExpectServerHello {
                 self.transcript
                     .start_hash(suite.get_hash());
                 (self.randoms, self.transcript)
-            },
+            }
             ServerIdentity::EncryptedClientHello(ech) => {
                 println!("Calculate transcript.");
-                ech.confirm_ech(&*self.config.key_log, server_hello, &self.randoms, suite.get_hash())
+                ech.confirm_ech(
+                    &*self.config.key_log,
+                    server_hello,
+                    &self.randoms,
+                    suite.get_hash(),
+                )
             }
         };
         self.transcript = transcript;

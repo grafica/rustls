@@ -865,7 +865,7 @@ impl ServerExtension {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ClientHelloPayload {
     pub client_version: ProtocolVersion,
     pub random: Random,

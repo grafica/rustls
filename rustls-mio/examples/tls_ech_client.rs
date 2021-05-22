@@ -39,6 +39,7 @@ fn main() {
     let mut connection = ClientConnection::with_server_id(
         Arc::new(client_config),
         ServerIdentity::EncryptedClientHello(Box::new(ech)),
+        //ServerIdentity::Hostname(dns_name.to_owned())
     )
     .unwrap();
     let mut sock = TcpStream::connect(domain.to_owned() + ":443").unwrap();

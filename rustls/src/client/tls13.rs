@@ -497,7 +497,7 @@ impl hs::State for ExpectEncryptedExtensions {
                 config: self.config,
                 dns_name: self
                     .server_id
-                    .get_outer_hostname()
+                    .get_inner_hostname()
                     .to_owned(),
                 randoms: self.randoms,
                 suite: self.suite,
@@ -517,7 +517,7 @@ impl hs::State for ExpectEncryptedExtensions {
                 config: self.config,
                 dns_name: self
                     .server_id
-                    .get_outer_hostname()
+                    .get_inner_hostname()
                     .to_owned(),
                 randoms: self.randoms,
                 suite: self.suite,
