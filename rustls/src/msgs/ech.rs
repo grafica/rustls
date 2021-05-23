@@ -11,14 +11,12 @@ use crate::msgs::handshake::{
     HpkeSymmetricCipherSuite, Random, ServerHelloPayload, SessionID,
 };
 use crate::msgs::message::{Message, MessagePayload};
-use crate::{rand, ClientConfig};
+use crate::rand;
 use crate::{Error, KeyLog, ProtocolVersion};
 use hpke_rs::prelude::*;
 use hpke_rs::{Hpke, Mode};
-use std::sync::Arc;
 use webpki;
 
-#[allow(dead_code)]
 const HPKE_INFO: &[u8; 8] = b"tls ech\0";
 
 fn hpke_info(config: &EchConfig) -> Vec<u8> {
@@ -28,7 +26,6 @@ fn hpke_info(config: &EchConfig) -> Vec<u8> {
     info
 }
 
-#[allow(dead_code)]
 pub struct EncryptedClientHello {
     pub hostname: webpki::DnsName,
     pub hpke: Hpke,
@@ -52,12 +49,11 @@ impl EncryptedClientHello {
         let (config_contents, hpke_info, (suite, hpke)) = configs
             .iter()
             .find_map(|config| {
+                let c = &config.contents;
                 Some((
-                    config.contents.clone(),
+                    c.clone(),
                     hpke_info(&config),
-                    config
-                        .contents
-                        .hpke_key_config
+                    c.hpke_key_config
                         .hpke_symmetric_cipher_suites
                         .iter()
                         .find_map(|suite| {
@@ -65,14 +61,8 @@ impl EncryptedClientHello {
                                 suite,
                                 hpke_rs::Hpke::new(
                                     Mode::Base,
-                                    HpkeKemMode::try_from(
-                                        config
-                                            .contents
-                                            .hpke_key_config
-                                            .hpke_kem_id
-                                            .get_u16(),
-                                    )
-                                    .ok()?,
+                                    HpkeKemMode::try_from(c.hpke_key_config.hpke_kem_id.get_u16())
+                                        .ok()?,
                                     HpkeKdfMode::try_from(suite.hpke_kdf_id.get_u16()).ok()?,
                                     HpkeAeadMode::try_from(suite.hpke_aead_id.get_u16()).ok()?,
                                 ),
@@ -184,7 +174,7 @@ impl EncryptedClientHello {
         inner_hello.extensions.pop();
         inner_hello.extensions.extend(outers);
 
-        let mut chp = HandshakeMessagePayload {
+        let chp = HandshakeMessagePayload {
             typ: HandshakeType::ClientHello,
             payload: HandshakePayload::ClientHello(inner_hello),
         };
@@ -268,26 +258,30 @@ impl EncryptedClientHello {
         randoms: &ConnectionRandoms,
         alg: &'static ring::digest::Algorithm,
     ) -> (ConnectionRandoms, HandshakeHash) {
-        /*let mut confirmation_transcript = HandshakeHash::new();
+        let message = self.inner_message.as_ref().unwrap();
+        let mut confirmation_transcript = HandshakeHash::new();
         confirmation_transcript.start_hash(alg);
-        confirmation_transcript.update_raw(&self.inner_payload.as_ref().unwrap());
+        confirmation_transcript.add_message(message);
         let mut encoded_sh = Vec::new();
         server_hello.encode_for_ech_confirmation(&mut encoded_sh);
-        confirmation_transcript.update_raw(&mut encoded_sh); */
-        /*let key_schedule = KeyScheduleHandshake::
-        key_schedule.server_ech_confirmed_traffic_secret(
-            &confirmation_transcript.get_current_hash(),
+        confirmation_transcript.update_raw(&mut encoded_sh);
+
+        let ks = KeyScheduleHandshake {
+            ks: self.ks,
+            None,
+            None,
+        }
+        let prk = ks::server_ech_confirmed_traffic_secret(
+            &confirmation_transcript,
             key_log,
             &self.inner_random,
-        );*/
+        );
 
         // TODO: Actually confirm
 
         let mut inner_transcript = HandshakeHash::new();
         inner_transcript.start_hash(alg);
-        println!("hash: {:?}", alg);
-
-        inner_transcript.add_message(self.inner_message.as_ref().unwrap());
+        inner_transcript.add_message(message);
         let inner_randoms = ConnectionRandoms {
             we_are_client: true,
             client: self.inner_random,
@@ -311,8 +305,8 @@ mod test {
     use crate::msgs::handshake::*;
     use crate::ProtocolVersion;
     use base64;
-    use webpki::DnsNameRef;
     use std::convert::TryInto;
+    use webpki::DnsNameRef;
 
     const BASE64_ECHCONFIGS: &str = "AEj+CgBEuwAgACCYKvleXJQ16RUURAsG1qTRN70ob5ewCDH6NuzE97K8MAAEAAEAAQAAABNjbG91ZGZsYXJlLWVzbmkuY29tAAA=";
     fn get_ech_config(s: &str) -> (EchConfigList, Vec<u8>) {

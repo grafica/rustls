@@ -139,6 +139,29 @@ impl KeyScheduleNonSecret {
     }
 }
 
+/// KeySchedule testing whether ECH was accepted.
+pub struct KeyScheduleEchConfirmation {
+    ks: KeySchedule,
+}
+
+impl KeyScheduleEchConfirmation {
+    pub fn server_ech_confirmed_traffic_secret(
+        &mut self,
+        hs_hash: &Digest,
+        key_log: &dyn KeyLog,
+        client_random: &[u8; 32],
+    ) -> hkdf::Prk {
+        let secret = self.ks.derive_logged_secret(
+            SecretKind::ServerECHConfirmedTrafficSecret,
+            hs_hash.as_ref(),
+            key_log,
+            client_random,
+        );
+        self.current_server_traffic_secret = Some(secret.clone());
+        secret
+    }
+}
+
 /// KeySchedule during handshake.
 pub struct KeyScheduleHandshake {
     ks: KeySchedule,
@@ -172,22 +195,6 @@ impl KeyScheduleHandshake {
     ) -> hkdf::Prk {
         let secret = self.ks.derive_logged_secret(
             SecretKind::ServerHandshakeTrafficSecret,
-            hs_hash.as_ref(),
-            key_log,
-            client_random,
-        );
-        self.current_server_traffic_secret = Some(secret.clone());
-        secret
-    }
-
-    pub fn server_ech_confirmed_traffic_secret(
-        &mut self,
-        hs_hash: &Digest,
-        key_log: &dyn KeyLog,
-        client_random: &[u8; 32],
-    ) -> hkdf::Prk {
-        let secret = self.ks.derive_logged_secret(
-            SecretKind::ServerECHConfirmedTrafficSecret,
             hs_hash.as_ref(),
             key_log,
             client_random,

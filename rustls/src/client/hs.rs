@@ -8,12 +8,12 @@ use crate::key_schedule::KeyScheduleEarly;
 use crate::kx;
 #[cfg(feature = "logging")]
 use crate::log::{debug, trace};
-use crate::msgs::base::{Payload, PayloadU16, PayloadU24};
+use crate::msgs::base::Payload;
 use crate::msgs::codec::{Codec, Reader};
 use crate::msgs::enums::{AlertDescription, CipherSuite, Compression, ProtocolVersion};
 use crate::msgs::enums::{ContentType, ExtensionType, HandshakeType};
 use crate::msgs::enums::{ECPointFormat, PSKKeyExchangeMode};
-use crate::msgs::handshake::{CertificateStatusRequest, ClientEch, ClientHelloOuterAAD, SCTList};
+use crate::msgs::handshake::{CertificateStatusRequest, SCTList};
 use crate::msgs::handshake::{ClientExtension, HasServerExtensions};
 use crate::msgs::handshake::{ClientHelloPayload, HandshakeMessagePayload, HandshakePayload};
 use crate::msgs::handshake::{ConvertProtocolNameList, ProtocolNameList};

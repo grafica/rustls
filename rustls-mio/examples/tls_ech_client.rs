@@ -39,7 +39,6 @@ fn main() {
     let mut connection = ClientConnection::with_server_id(
         Arc::new(client_config),
         ServerIdentity::EncryptedClientHello(Box::new(ech)),
-        //ServerIdentity::Hostname(dns_name.to_owned())
     )
     .unwrap();
     let mut sock = TcpStream::connect(domain.to_owned() + ":443").unwrap();
@@ -48,6 +47,7 @@ fn main() {
     let mut headers = String::new();
     headers.push_str("GET / HTTP/1.1\r\n");
     headers.push_str(host_header.as_str());
+    headers.push_str("User-Agent: RustlsDemo .01\r\n");
     headers.push_str("Connection: close\r\n");
     headers.push_str("Accept-Encoding: identity\r\n");
     headers.push_str("\r\n");
