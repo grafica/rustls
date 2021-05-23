@@ -32,7 +32,6 @@ impl SecretKind {
             SecretKind::ClientEarlyTrafficSecret => b"c e traffic",
             SecretKind::ClientHandshakeTrafficSecret => b"c hs traffic",
             SecretKind::ServerHandshakeTrafficSecret => b"s hs traffic",
-            SecretKind::ServerECHConfirmedTrafficSecret => b"ech accept confirmation",
             SecretKind::ClientApplicationTrafficSecret => b"c ap traffic",
             SecretKind::ServerApplicationTrafficSecret => b"s ap traffic",
             SecretKind::ExporterMasterSecret => b"exp master",
@@ -47,7 +46,6 @@ impl SecretKind {
             ClientEarlyTrafficSecret => "CLIENT_EARLY_TRAFFIC_SECRET",
             ClientHandshakeTrafficSecret => "CLIENT_HANDSHAKE_TRAFFIC_SECRET",
             ServerHandshakeTrafficSecret => "SERVER_HANDSHAKE_TRAFFIC_SECRET",
-            ServerECHConfirmedTrafficSecret => "SERVER_ECH_CONFIRMED_TRAFFIC_SECRET",
             ClientApplicationTrafficSecret => "CLIENT_TRAFFIC_SECRET_0",
             ServerApplicationTrafficSecret => "SERVER_TRAFFIC_SECRET_0",
             ExporterMasterSecret => "EXPORTER_SECRET",
@@ -136,29 +134,6 @@ impl KeyScheduleNonSecret {
             current_client_traffic_secret: None,
             current_server_traffic_secret: None,
         }
-    }
-}
-
-/// KeySchedule testing whether ECH was accepted.
-pub struct KeyScheduleEchConfirmation {
-    ks: KeySchedule,
-}
-
-impl KeyScheduleEchConfirmation {
-    pub fn server_ech_confirmed_traffic_secret(
-        &mut self,
-        hs_hash: &Digest,
-        key_log: &dyn KeyLog,
-        client_random: &[u8; 32],
-    ) -> hkdf::Prk {
-        let secret = self.ks.derive_logged_secret(
-            SecretKind::ServerECHConfirmedTrafficSecret,
-            hs_hash.as_ref(),
-            key_log,
-            client_random,
-        );
-        self.current_server_traffic_secret = Some(secret.clone());
-        secret
     }
 }
 

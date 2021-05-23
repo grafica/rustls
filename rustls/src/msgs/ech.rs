@@ -1,6 +1,6 @@
 use crate::conn::ConnectionRandoms;
 use crate::hash_hs::HandshakeHash;
-use crate::key_schedule::KeyScheduleHandshake;
+use crate::key_schedule::hkdf_expand;
 use crate::msgs::base::{PayloadU16, PayloadU24};
 use crate::msgs::codec::{Codec, Reader};
 use crate::msgs::enums::{ExtensionType, HandshakeType};
@@ -13,6 +13,7 @@ use crate::msgs::handshake::{
 use crate::msgs::message::{Message, MessagePayload};
 use crate::rand;
 use crate::{Error, KeyLog, ProtocolVersion};
+use ring::hkdf::Prk;
 use hpke_rs::prelude::*;
 use hpke_rs::{Hpke, Mode};
 use webpki;
@@ -253,7 +254,6 @@ impl EncryptedClientHello {
 
     pub(crate) fn confirm_ech(
         &self,
-        key_log: &dyn KeyLog,
         server_hello: &ServerHelloPayload,
         randoms: &ConnectionRandoms,
         alg: &'static ring::digest::Algorithm,
@@ -265,18 +265,13 @@ impl EncryptedClientHello {
         let mut encoded_sh = Vec::new();
         server_hello.encode_for_ech_confirmation(&mut encoded_sh);
         confirmation_transcript.update_raw(&mut encoded_sh);
-
-        let ks = KeyScheduleHandshake {
-            ks: self.ks,
-            None,
-            None,
-        }
-        let prk = ks::server_ech_confirmed_traffic_secret(
-            &confirmation_transcript,
-            key_log,
-            &self.inner_random,
+        let key = hkdf_expand(
+            Prk::new_less_safe(, ),
+            alg,
+            b"ech accept confirmation",
+            &confirmation_transcript.get_current_hash().as_ref(),
         );
-
+        println!("key: {:?}", key);
         // TODO: Actually confirm
 
         let mut inner_transcript = HandshakeHash::new();
