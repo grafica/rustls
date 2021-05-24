@@ -618,6 +618,7 @@ impl State for ExpectServerHello {
             )
         } else {
             println!("add server_hello_message");
+            self.transcript.start_hash(&suite.get_hash());
             self.transcript.add_message(&m);
             tls12::CompleteServerHelloHandling {
                 config: self.config,
