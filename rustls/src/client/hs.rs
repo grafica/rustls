@@ -8,7 +8,7 @@ use crate::key_schedule::KeyScheduleEarly;
 use crate::kx;
 #[cfg(feature = "logging")]
 use crate::log::{debug, trace};
-use crate::msgs::base::Payload;
+use crate::msgs::base::{Payload, PayloadU16};
 use crate::msgs::codec::{Codec, Reader};
 use crate::msgs::enums::{AlertDescription, CipherSuite, Compression, ProtocolVersion};
 use crate::msgs::enums::{ContentType, ExtensionType, HandshakeType};
@@ -592,32 +592,16 @@ impl State for ExpectServerHello {
             }
         }
 
-        // Start our handshake hash, and input the server-hello.
-
-        let (randoms, transcript) = match &self.server_id {
-            ServerIdentity::Hostname(_) => {
-                self.transcript
-                    .start_hash(suite.get_hash());
-                (self.randoms, self.transcript)
-            }
-            ServerIdentity::EncryptedClientHello(ech) => {
-                println!("Calculate transcript.");
-                ech.confirm_ech(
-                    &*self.config.key_log,
-                    server_hello,
-                    &self.randoms,
-                    suite.get_hash(),
-                )
-            }
-        };
-        self.transcript = transcript;
-        self.randoms = randoms;
-        self.transcript.add_message(&m);
-
         // For TLS1.3, start message encryption using
         // handshake_traffic_secret.
         if cx.common.is_tls13() {
+            let server_message = match &m.payload {
+                MessagePayload::Handshake(hs) => Ok(hs.get_encoding()),
+                _ => Err(Error::General("wrong payload".to_string()))
+            }?;
+
             tls13::handle_server_hello(
+                server_message,
                 self.config,
                 cx,
                 server_hello,
@@ -633,6 +617,8 @@ impl State for ExpectServerHello {
                 self.sent_tls13_fake_ccs,
             )
         } else {
+            println!("add server_hello_message");
+            self.transcript.add_message(&m);
             tls12::CompleteServerHelloHandling {
                 config: self.config,
                 resuming_session: self.resuming_session,

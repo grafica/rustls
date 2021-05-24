@@ -1,7 +1,7 @@
 use crate::conn::ConnectionRandoms;
 use crate::hash_hs::HandshakeHash;
-use crate::key_schedule::hkdf_expand;
-use crate::msgs::base::{PayloadU16, PayloadU24};
+use crate::key_schedule::{hkdf_expand_unprefixed, PayloadU8Len, hkdf_expand, KeyScheduleHandshake};
+use crate::msgs::base::{PayloadU16, PayloadU24, PayloadU8};
 use crate::msgs::codec::{Codec, Reader};
 use crate::msgs::enums::{ExtensionType, HandshakeType};
 use crate::msgs::handshake::ClientExtension::EchOuterExtensions;
@@ -11,12 +11,16 @@ use crate::msgs::handshake::{
     HpkeSymmetricCipherSuite, Random, ServerHelloPayload, SessionID,
 };
 use crate::msgs::message::{Message, MessagePayload};
-use crate::rand;
+use crate::{rand, SupportedCipherSuite};
 use crate::{Error, KeyLog, ProtocolVersion};
 use ring::hkdf::Prk;
+use ring::digest::{self, Digest};
+use ring::hkdf::KeyType;
 use hpke_rs::prelude::*;
 use hpke_rs::{Hpke, Mode};
 use webpki;
+use std::convert::TryInto;
+use crate::msgs::codec;
 
 const HPKE_INFO: &[u8; 8] = b"tls ech\0";
 
@@ -254,28 +258,54 @@ impl EncryptedClientHello {
 
     pub(crate) fn confirm_ech(
         &self,
+        ks: &KeyScheduleHandshake,
         server_hello: &ServerHelloPayload,
         randoms: &ConnectionRandoms,
-        alg: &'static ring::digest::Algorithm,
-    ) -> (ConnectionRandoms, HandshakeHash) {
+        suite: &SupportedCipherSuite,
+    ) -> Result<(ConnectionRandoms, HandshakeHash), Error> {
         let message = self.inner_message.as_ref().unwrap();
         let mut confirmation_transcript = HandshakeHash::new();
-        confirmation_transcript.start_hash(alg);
+        confirmation_transcript.start_hash(suite.get_hash());
         confirmation_transcript.add_message(message);
+
         let mut encoded_sh = Vec::new();
         server_hello.encode_for_ech_confirmation(&mut encoded_sh);
-        confirmation_transcript.update_raw(&mut encoded_sh);
-        let key = hkdf_expand(
-            Prk::new_less_safe(, ),
-            alg,
+
+        let mut test_sh = Vec::new();
+        server_hello.encode(&mut test_sh);
+        println!("test_sh    {:?}", test_sh);
+        println!("encoded_sh {:?}", encoded_sh);
+        assert_eq!(test_sh.len(), encoded_sh.len());
+
+        let mut hmp_encoded = Vec::new();
+        HandshakeType::ServerHello.encode(&mut hmp_encoded);
+        codec::u24(encoded_sh.len() as u32).encode(&mut hmp_encoded);
+        hmp_encoded.append(&mut encoded_sh);
+        println!("hmp_encoded: {:?}", hmp_encoded);
+        confirmation_transcript.update_raw(&mut hmp_encoded);
+
+
+        /*
+        let zeroes = [0u8; digest::MAX_OUTPUT_LEN];
+        let zeroes = &zeroes[..suite.hkdf_algorithm.len()];
+        println!("len zeroes {}", zeroes.len());
+        let salt = ring::hkdf::Salt::new(suite.hkdf_algorithm, zeroes);
+
+
+
+        let key: PayloadU8 = hkdf_expand(
+
+            PayloadU8Len(8),
             b"ech accept confirmation",
             &confirmation_transcript.get_current_hash().as_ref(),
         );
-        println!("key: {:?}", key);
+        println!("server_hello.random: {:?}", server_hello.random.get_encoding());
+        println!("key:                 {:?}", key.0);
+        */
         // TODO: Actually confirm
 
         let mut inner_transcript = HandshakeHash::new();
-        inner_transcript.start_hash(alg);
+        inner_transcript.start_hash(suite.get_hash());
         inner_transcript.add_message(message);
         let inner_randoms = ConnectionRandoms {
             we_are_client: true,
@@ -284,7 +314,7 @@ impl EncryptedClientHello {
         };
 
         println!("returning inner_transcript");
-        (inner_randoms, inner_transcript)
+        Ok((inner_randoms, inner_transcript))
     }
 }
 

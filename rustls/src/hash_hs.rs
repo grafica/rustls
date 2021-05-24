@@ -77,6 +77,7 @@ impl HandshakeHash {
     pub fn add_message(&mut self, m: &Message) -> &mut HandshakeHash {
         if let MessagePayload::Handshake(hs) = &m.payload {
             let buf = hs.get_encoding();
+            //println!("update hs {:?}", buf);
             self.update_raw(&buf);
         }
         self

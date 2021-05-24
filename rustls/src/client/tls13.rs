@@ -59,6 +59,7 @@ static DISALLOWED_TLS13_EXTS: &[ExtensionType] = &[
 ];
 
 pub(super) fn handle_server_hello(
+    server_message: Vec<u8>,
     config: Arc<ClientConfig>,
     cx: &mut ClientContext,
     server_hello: &ServerHelloPayload,
@@ -66,7 +67,7 @@ pub(super) fn handle_server_hello(
     server_id: ServerIdentity,
     randoms: ConnectionRandoms,
     suite: &'static SupportedCipherSuite,
-    transcript: HandshakeHash,
+    mut transcript: HandshakeHash,
     early_key_schedule: Option<KeyScheduleEarly>,
     hello: ClientHelloDetails,
     our_key_share: kx::KeyExchange,
@@ -153,6 +154,26 @@ pub(super) fn handle_server_hello(
     // If we change keying when a subsequent handshake message is being joined,
     // the two halves will have different record layer protections.  Disallow this.
     cx.common.check_aligned_handshake()?;
+
+    let  (randoms, mut transcript) = match &server_id {
+        ServerIdentity::Hostname(_) => {
+            transcript
+                .start_hash(suite.get_hash());
+            (randoms, transcript)
+        }
+        ServerIdentity::EncryptedClientHello(ech) => {
+            println!("Calculate transcript.");
+            ech.confirm_ech(
+                &key_schedule,
+                server_hello,
+                &randoms,
+                suite
+            )?
+        }
+    };
+
+    println!("add server_hello_message");
+    transcript.update_raw(&*server_message);
 
     /*
         let (randoms, transcript) = match &server_id {
