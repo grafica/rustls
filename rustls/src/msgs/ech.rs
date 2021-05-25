@@ -1,6 +1,6 @@
 use crate::conn::ConnectionRandoms;
 use crate::hash_hs::HandshakeHash;
-use crate::key_schedule::{hkdf_expand_unprefixed, PayloadU8Len, hkdf_expand, KeyScheduleHandshake};
+use crate::key_schedule::{PayloadU8Len, KeyScheduleHandshake};
 use crate::msgs::base::{PayloadU16, PayloadU24, PayloadU8};
 use crate::msgs::codec::{Codec, Reader};
 use crate::msgs::enums::{ExtensionType, HandshakeType};
@@ -258,7 +258,7 @@ impl EncryptedClientHello {
 
     pub(crate) fn confirm_ech(
         &self,
-        ks: &KeyScheduleHandshake,
+        ks: &mut KeyScheduleHandshake,
         server_hello: &ServerHelloPayload,
         randoms: &ConnectionRandoms,
         suite: &SupportedCipherSuite,
@@ -283,8 +283,9 @@ impl EncryptedClientHello {
         hmp_encoded.append(&mut encoded_sh);
         println!("hmp_encoded: {:?}", hmp_encoded);
         confirmation_transcript.update_raw(&mut hmp_encoded);
-
-
+        let bytes = ks.server_ech_confirmation_secret(&confirmation_transcript.get_current_hash());
+        println!(" bytes: {:?}", &bytes.into_inner()[..8]);
+        println!("last 8: {:?}", &server_hello.random.get_encoding()[24..]);
         /*
         let zeroes = [0u8; digest::MAX_OUTPUT_LEN];
         let zeroes = &zeroes[..suite.hkdf_algorithm.len()];

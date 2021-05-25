@@ -17,6 +17,7 @@ enum SecretKind {
     ClientEarlyTrafficSecret,
     ClientHandshakeTrafficSecret,
     ServerHandshakeTrafficSecret,
+    ServerEchConfirmationSecret,
     ClientApplicationTrafficSecret,
     ServerApplicationTrafficSecret,
     ExporterMasterSecret,
@@ -31,6 +32,7 @@ impl SecretKind {
             SecretKind::ClientEarlyTrafficSecret => b"c e traffic",
             SecretKind::ClientHandshakeTrafficSecret => b"c hs traffic",
             SecretKind::ServerHandshakeTrafficSecret => b"s hs traffic",
+            SecretKind::ServerEchConfirmationSecret => b"ech accept confirmation",
             SecretKind::ClientApplicationTrafficSecret => b"c ap traffic",
             SecretKind::ServerApplicationTrafficSecret => b"s ap traffic",
             SecretKind::ExporterMasterSecret => b"exp master",
@@ -45,6 +47,7 @@ impl SecretKind {
             ClientEarlyTrafficSecret => "CLIENT_EARLY_TRAFFIC_SECRET",
             ClientHandshakeTrafficSecret => "CLIENT_HANDSHAKE_TRAFFIC_SECRET",
             ServerHandshakeTrafficSecret => "SERVER_HANDSHAKE_TRAFFIC_SECRET",
+            ServerEchConfirmationSecret => "SERVER_ECH_CONFIRMATION_SECRET",
             ClientApplicationTrafficSecret => "CLIENT_TRAFFIC_SECRET_0",
             ServerApplicationTrafficSecret => "SERVER_TRAFFIC_SECRET_0",
             ExporterMasterSecret => "EXPORTER_SECRET",
@@ -127,6 +130,7 @@ impl KeyScheduleNonSecret {
     }
 
     pub fn into_handshake(mut self, secret: &[u8]) -> KeyScheduleHandshake {
+        println!("input secret: {:?}", secret);
         self.ks.input_secret(secret);
         KeyScheduleHandshake {
             ks: self.ks,
@@ -175,6 +179,17 @@ impl KeyScheduleHandshake {
         );
         self.current_server_traffic_secret = Some(secret.clone());
         secret
+    }
+
+    pub fn server_ech_confirmation_secret(
+        &mut self,
+        hs_hash: &Digest,
+    ) -> PayloadU8 {
+        self.ks.derive::<PayloadU8, _>(
+            PayloadU8Len(self.ks.algorithm.len()),
+            SecretKind::ServerHandshakeTrafficSecret,
+            hs_hash.as_ref(),
+        )
     }
 
     pub fn sign_server_finish(&self, hs_hash: &Digest) -> hmac::Tag {
@@ -467,31 +482,18 @@ impl KeySchedule {
             b"exporter",
             h_context.as_ref(),
             |okm| okm.fill(out),
-            LABEL_PREFIX
         )
         .map_err(|_| Error::General("exporting too much".to_string()))
     }
 }
-
-const LABEL_PREFIX: &[u8] = b"tls13 ";
 
 pub(crate) fn hkdf_expand<T, L>(secret: &hkdf::Prk, key_type: L, label: &[u8], context: &[u8]) -> T
 where
     T: for<'a> From<hkdf::Okm<'a, L>>,
     L: hkdf::KeyType,
 {
-    hkdf_expand_info(secret, key_type, label, context, |okm| okm.into(), LABEL_PREFIX)
+    hkdf_expand_info(secret, key_type, label, context, |okm| okm.into())
 }
-
-pub(crate) fn hkdf_expand_unprefixed<T, L>(secret: &hkdf::Prk, key_type: L, label: &[u8], context: &[u8]) -> T
-    where
-        T: for<'a> From<hkdf::Okm<'a, L>>,
-        L: hkdf::KeyType,
-{
-    hkdf_expand_info(secret, key_type, label, context, |okm| okm.into(), &[])
-}
-
-
 
 fn hkdf_expand_info<F, T, L>(
     secret: &hkdf::Prk,
@@ -499,25 +501,25 @@ fn hkdf_expand_info<F, T, L>(
     label: &[u8],
     context: &[u8],
     f: F,
-    prefix: &[u8],
 ) -> T
 where
     F: for<'b> FnOnce(hkdf::Okm<'b, L>) -> T,
     L: hkdf::KeyType,
 {
+    const LABEL_PREFIX: &[u8] = b"tls13 ";
+
     let output_len = u16::to_be_bytes(key_type.len() as u16);
-    let label_len = u8::to_be_bytes((prefix.len() + label.len()) as u8);
+    let label_len = u8::to_be_bytes((LABEL_PREFIX.len() + label.len()) as u8);
     let context_len = u8::to_be_bytes(context.len() as u8);
 
     let info = &[
         &output_len[..],
         &label_len[..],
-        prefix,
+        LABEL_PREFIX,
         label,
         &context_len[..],
         context,
     ];
-
     let okm = secret.expand(info, key_type).unwrap();
 
     f(okm)

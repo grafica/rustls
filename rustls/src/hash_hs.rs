@@ -85,6 +85,7 @@ impl HandshakeHash {
 
     /// Hash or buffer a byte slice.
     pub(crate) fn update_raw(&mut self, buf: &[u8]) -> &mut Self {
+        println!("update_raw");
         if let Some(ctx) = &mut self.ctx {
             ctx.update(buf);
         }
