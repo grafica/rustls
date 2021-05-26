@@ -597,7 +597,7 @@ impl State for ExpectServerHello {
         if cx.common.is_tls13() {
             let server_message = match &m.payload {
                 MessagePayload::Handshake(hs) => Ok(hs.get_encoding()),
-                _ => Err(Error::General("wrong payload".to_string()))
+                _ => Err(Error::General("wrong payload".to_string())),
             }?;
 
             tls13::handle_server_hello(
@@ -618,7 +618,8 @@ impl State for ExpectServerHello {
             )
         } else {
             println!("add server_hello_message");
-            self.transcript.start_hash(&suite.get_hash());
+            self.transcript
+                .start_hash(&suite.get_hash());
             self.transcript.add_message(&m);
             tls12::CompleteServerHelloHandling {
                 config: self.config,

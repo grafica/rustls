@@ -467,7 +467,7 @@ impl KeySchedule {
             b"exporter",
             h_context.as_ref(),
             |okm| okm.fill(out),
-            LABEL_PREFIX
+            LABEL_PREFIX,
         )
         .map_err(|_| Error::General("exporting too much".to_string()))
     }
@@ -480,18 +480,28 @@ where
     T: for<'a> From<hkdf::Okm<'a, L>>,
     L: hkdf::KeyType,
 {
-    hkdf_expand_info(secret, key_type, label, context, |okm| okm.into(), LABEL_PREFIX)
+    hkdf_expand_info(
+        secret,
+        key_type,
+        label,
+        context,
+        |okm| okm.into(),
+        LABEL_PREFIX,
+    )
 }
 
-pub(crate) fn hkdf_expand_unprefixed<T, L>(secret: &hkdf::Prk, key_type: L, label: &[u8], context: &[u8]) -> T
-    where
-        T: for<'a> From<hkdf::Okm<'a, L>>,
-        L: hkdf::KeyType,
+pub(crate) fn hkdf_expand_unprefixed<T, L>(
+    secret: &hkdf::Prk,
+    key_type: L,
+    label: &[u8],
+    context: &[u8],
+) -> T
+where
+    T: for<'a> From<hkdf::Okm<'a, L>>,
+    L: hkdf::KeyType,
 {
     hkdf_expand_info(secret, key_type, label, context, |okm| okm.into(), &[])
 }
-
-
 
 fn hkdf_expand_info<F, T, L>(
     secret: &hkdf::Prk,

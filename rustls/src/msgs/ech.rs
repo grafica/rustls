@@ -1,7 +1,10 @@
 use crate::conn::ConnectionRandoms;
 use crate::hash_hs::HandshakeHash;
-use crate::key_schedule::{hkdf_expand_unprefixed, PayloadU8Len, hkdf_expand, KeyScheduleHandshake};
-use crate::msgs::base::{PayloadU16, PayloadU24, PayloadU8};
+use crate::key_schedule::{
+    hkdf_expand, hkdf_expand_unprefixed, KeyScheduleHandshake, PayloadU8Len,
+};
+use crate::msgs::base::{PayloadU8, PayloadU16, PayloadU24};
+use crate::msgs::codec;
 use crate::msgs::codec::{Codec, Reader};
 use crate::msgs::enums::{ExtensionType, HandshakeType};
 use crate::msgs::handshake::ClientExtension::EchOuterExtensions;
@@ -13,14 +16,13 @@ use crate::msgs::handshake::{
 use crate::msgs::message::{Message, MessagePayload};
 use crate::{rand, SupportedCipherSuite};
 use crate::{Error, KeyLog, ProtocolVersion};
-use ring::hkdf::Prk;
-use ring::digest::{self, Digest};
-use ring::hkdf::KeyType;
 use hpke_rs::prelude::*;
 use hpke_rs::{Hpke, Mode};
-use webpki;
+use ring::digest::{self, Digest};
+use ring::hkdf::KeyType;
+use ring::hkdf::Prk;
 use std::convert::TryInto;
-use crate::msgs::codec;
+use webpki;
 
 const HPKE_INFO: &[u8; 8] = b"tls ech\0";
 
@@ -268,41 +270,8 @@ impl EncryptedClientHello {
         confirmation_transcript.start_hash(suite.get_hash());
         confirmation_transcript.add_message(message);
 
-        let mut encoded_sh = Vec::new();
-        server_hello.encode_for_ech_confirmation(&mut encoded_sh);
-
-        let mut test_sh = Vec::new();
-        server_hello.encode(&mut test_sh);
-        println!("test_sh    {:?}", test_sh);
-        println!("encoded_sh {:?}", encoded_sh);
-        assert_eq!(test_sh.len(), encoded_sh.len());
-
-        let mut hmp_encoded = Vec::new();
-        HandshakeType::ServerHello.encode(&mut hmp_encoded);
-        codec::u24(encoded_sh.len() as u32).encode(&mut hmp_encoded);
-        hmp_encoded.append(&mut encoded_sh);
-        println!("hmp_encoded: {:?}", hmp_encoded);
-        confirmation_transcript.update_raw(&mut hmp_encoded);
-
-
-        /*
-        let zeroes = [0u8; digest::MAX_OUTPUT_LEN];
-        let zeroes = &zeroes[..suite.hkdf_algorithm.len()];
-        println!("len zeroes {}", zeroes.len());
-        let salt = ring::hkdf::Salt::new(suite.hkdf_algorithm, zeroes);
-
-
-
-        let key: PayloadU8 = hkdf_expand(
-
-            PayloadU8Len(8),
-            b"ech accept confirmation",
-            &confirmation_transcript.get_current_hash().as_ref(),
-        );
-        println!("server_hello.random: {:?}", server_hello.random.get_encoding());
-        println!("key:                 {:?}", key.0);
-        */
-        // TODO: Actually confirm
+        let mut shc = Self::server_hello_conf(server_hello);
+        confirmation_transcript.update_raw(&mut shc);
 
         let mut inner_transcript = HandshakeHash::new();
         inner_transcript.start_hash(suite.get_hash());
@@ -315,6 +284,16 @@ impl EncryptedClientHello {
 
         println!("returning inner_transcript");
         Ok((inner_randoms, inner_transcript))
+    }
+
+    fn server_hello_conf(server_hello: &ServerHelloPayload) -> Vec<u8> {
+        let mut encoded_sh = Vec::new();
+        server_hello.encode_for_ech_confirmation(&mut encoded_sh);
+        let mut hmp_encoded = Vec::new();
+        HandshakeType::ServerHello.encode(&mut hmp_encoded);
+        codec::u24(encoded_sh.len() as u32).encode(&mut hmp_encoded);
+        hmp_encoded.append(&mut encoded_sh);
+        hmp_encoded
     }
 }
 
@@ -705,6 +684,36 @@ mod test {
         assert_eq!(
             expected_payload.compression_methods,
             outer_payload.compression_methods
+        );
+    }
+
+    #[test]
+    fn test_server_hello_conf_encoding() {
+        let server_hello: Vec<u8> = vec![
+            2, 0, 0, 118, 3, 3, 231, 53, 50, 33, 36, 159, 187, 9, 89, 71, 33, 194, 19, 222, 167,
+            156, 203, 223, 24, 105, 11, 137, 40, 228, 28, 190, 107, 93, 27, 127, 230, 140, 32, 114,
+            83, 197, 39, 78, 40, 141, 55, 106, 35, 99, 167, 108, 239, 83, 197, 36, 193, 8, 86, 146,
+            51, 15, 154, 217, 199, 18, 43, 106, 77, 131, 142, 19, 1, 0, 0, 46, 0, 43, 0, 2, 3, 4,
+            0, 51, 0, 36, 0, 29, 0, 32, 233, 127, 54, 95, 59, 138, 22, 215, 79, 206, 171, 183, 128,
+            10, 253, 245, 92, 42, 132, 0, 159, 103, 166, 145, 230, 150, 249, 57, 73, 119, 31, 11,
+        ];
+        let server_hello_conf: Vec<u8> = vec![
+            2, 0, 0, 118, 3, 3, 231, 53, 50, 33, 36, 159, 187, 9, 89, 71, 33, 194, 19, 222, 167,
+            156, 203, 223, 24, 105, 11, 137, 40, 228, 0, 0, 0, 0, 0, 0, 0, 0, 32, 114, 83, 197, 39,
+            78, 40, 141, 55, 106, 35, 99, 167, 108, 239, 83, 197, 36, 193, 8, 86, 146, 51, 15, 154,
+            217, 199, 18, 43, 106, 77, 131, 142, 19, 1, 0, 0, 46, 0, 43, 0, 2, 3, 4, 0, 51, 0, 36,
+            0, 29, 0, 32, 233, 127, 54, 95, 59, 138, 22, 215, 79, 206, 171, 183, 128, 10, 253, 245,
+            92, 42, 132, 0, 159, 103, 166, 145, 230, 150, 249, 57, 73, 119, 31, 11,
+        ];
+        assert_eq!(server_hello.len(), server_hello_conf.len());
+        let sh = HandshakeMessagePayload::read_bytes(&*server_hello).unwrap();
+        let payload = match sh.payload {
+            HandshakePayload::ServerHello(payload) => payload,
+            _ => unreachable!(),
+        };
+        assert_eq!(
+            server_hello_conf,
+            EncryptedClientHello::server_hello_conf(&payload)
         );
     }
 }
