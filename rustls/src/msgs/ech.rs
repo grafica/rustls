@@ -1,8 +1,6 @@
 use crate::conn::ConnectionRandoms;
 use crate::hash_hs::HandshakeHash;
-use crate::key_schedule::{
-    hkdf_expand, KeyScheduleHandshake, PayloadU8Len,
-};
+use crate::key_schedule::{hkdf_expand, KeyScheduleHandshake, PayloadU8Len};
 use crate::msgs::base::{PayloadU8, PayloadU16, PayloadU24};
 use crate::msgs::codec;
 use crate::msgs::codec::{Codec, Reader};
@@ -18,7 +16,7 @@ use crate::{rand, SupportedCipherSuite};
 use crate::{Error, KeyLog, ProtocolVersion};
 use hpke_rs::prelude::*;
 use hpke_rs::{Hpke, Mode};
-use ring::digest::{self, Digest};
+use ring::digest::{self, Algorithm, Digest};
 use ring::hkdf::KeyType;
 use ring::hkdf::Prk;
 use std::convert::TryInto;
@@ -265,16 +263,13 @@ impl EncryptedClientHello {
         randoms: &ConnectionRandoms,
         suite: &SupportedCipherSuite,
     ) -> Result<(ConnectionRandoms, HandshakeHash), Error> {
-        let message = self.inner_message.as_ref().unwrap();
-        let mut confirmation_transcript = HandshakeHash::new();
-        confirmation_transcript.start_hash(suite.get_hash());
-        confirmation_transcript.add_message(message);
+        let m = self.inner_message.as_ref().unwrap();
+        let conf = Self::confirmation_transcript(m, server_hello, suite.get_hash());
 
-        let mut shc = Self::server_hello_conf(server_hello);
-        confirmation_transcript.update_raw(&mut shc);
+
         let mut inner_transcript = HandshakeHash::new();
         inner_transcript.start_hash(suite.get_hash());
-        inner_transcript.add_message(message);
+        inner_transcript.add_message(m);
         let inner_randoms = ConnectionRandoms {
             we_are_client: true,
             client: self.inner_random,
@@ -283,6 +278,19 @@ impl EncryptedClientHello {
 
         println!("returning inner_transcript");
         Ok((inner_randoms, inner_transcript))
+    }
+
+    fn confirmation_transcript(
+        m: &Message,
+        server_hello: &ServerHelloPayload,
+        alg: &'static Algorithm,
+    ) -> HandshakeHash {
+        let mut confirmation_transcript = HandshakeHash::new();
+        confirmation_transcript.start_hash(alg);
+        confirmation_transcript.add_message(m);
+        let mut shc = Self::server_hello_conf(server_hello);
+        confirmation_transcript.update_raw(&mut shc);
+        confirmation_transcript
     }
 
     fn server_hello_conf(server_hello: &ServerHelloPayload) -> Vec<u8> {
@@ -713,6 +721,79 @@ mod test {
         assert_eq!(
             server_hello_conf,
             EncryptedClientHello::server_hello_conf(&payload)
+        );
+    }
+
+    #[test]
+    fn test_ech_confirmation() {
+        let hello_inner: Vec<u8> = vec![
+            1, 0, 1, 8, 3, 3, 242, 218, 60, 126, 75, 54, 149, 34, 49, 76, 136, 148, 253, 240, 228,
+            97, 182, 45, 242, 75, 236, 41, 43, 18, 70, 9, 56, 97, 239, 129, 98, 6, 32, 185, 39,
+            132, 239, 108, 247, 103, 96, 196, 139, 175, 141, 179, 183, 146, 233, 125, 186, 64, 150,
+            27, 44, 63, 164, 52, 217, 255, 103, 177, 152, 193, 156, 0, 38, 192, 47, 192, 48, 192,
+            43, 192, 44, 204, 168, 204, 169, 192, 19, 192, 9, 192, 20, 192, 10, 0, 156, 0, 157, 0,
+            47, 0, 53, 192, 18, 0, 10, 19, 1, 19, 3, 19, 2, 1, 0, 0, 153, 218, 9, 0, 0, 0, 0, 0,
+            26, 0, 24, 0, 0, 21, 99, 114, 121, 112, 116, 111, 46, 99, 108, 111, 117, 100, 102, 108,
+            97, 114, 101, 46, 99, 111, 109, 0, 5, 0, 5, 1, 0, 0, 0, 0, 0, 10, 0, 10, 0, 8, 0, 29,
+            0, 23, 0, 24, 0, 25, 0, 11, 0, 2, 1, 0, 0, 13, 0, 28, 0, 26, 8, 4, 4, 3, 8, 7, 8, 5, 8,
+            6, 4, 1, 5, 1, 6, 1, 5, 3, 6, 3, 2, 1, 2, 3, 254, 97, 255, 1, 0, 1, 0, 0, 18, 0, 0, 0,
+            43, 0, 3, 2, 3, 4, 0, 51, 0, 38, 0, 36, 0, 29, 0, 32, 79, 226, 52, 223, 83, 17, 243,
+            180, 169, 230, 248, 98, 114, 171, 117, 184, 199, 201, 72, 158, 119, 244, 111, 169, 142,
+            103, 64, 16, 99, 159, 231, 100,
+        ];
+        let after_inner_digest: Vec<u8> = vec![
+            88, 253, 232, 99, 162, 26, 223, 217, 182, 32, 192, 197, 64, 22, 178, 242, 191, 18, 114,
+            108, 241, 24, 190, 13, 220, 188, 39, 8, 162, 184, 107, 100,
+        ];
+        let server_hello: Vec<u8> = vec![
+            2, 0, 0, 118, 3, 3, 0, 229, 178, 163, 34, 124, 224, 126, 26, 29, 35, 157, 193, 217,
+            111, 255, 91, 159, 0, 164, 204, 35, 142, 224, 230, 81, 157, 191, 165, 173, 230, 5, 32,
+            185, 39, 132, 239, 108, 247, 103, 96, 196, 139, 175, 141, 179, 183, 146, 233, 125, 186,
+            64, 150, 27, 44, 63, 164, 52, 217, 255, 103, 177, 152, 193, 156, 19, 1, 0, 0, 46, 0,
+            43, 0, 2, 3, 4, 0, 51, 0, 36, 0, 29, 0, 32, 19, 32, 132, 249, 60, 241, 138, 20, 92,
+            218, 121, 130, 188, 222, 31, 54, 209, 251, 29, 50, 65, 191, 49, 29, 0, 105, 90, 252,
+            225, 119, 176, 77,
+        ];
+        let server_hello_conf: Vec<u8> = vec![
+            2, 0, 0, 118, 3, 3, 0, 229, 178, 163, 34, 124, 224, 126, 26, 29, 35, 157, 193, 217,
+            111, 255, 91, 159, 0, 164, 204, 35, 142, 224, 0, 0, 0, 0, 0, 0, 0, 0, 32, 185, 39, 132,
+            239, 108, 247, 103, 96, 196, 139, 175, 141, 179, 183, 146, 233, 125, 186, 64, 150, 27,
+            44, 63, 164, 52, 217, 255, 103, 177, 152, 193, 156, 19, 1, 0, 0, 46, 0, 43, 0, 2, 3, 4,
+            0, 51, 0, 36, 0, 29, 0, 32, 19, 32, 132, 249, 60, 241, 138, 20, 92, 218, 121, 130, 188,
+            222, 31, 54, 209, 251, 29, 50, 65, 191, 49, 29, 0, 105, 90, 252, 225, 119, 176, 77,
+        ];
+        let conf_digest: Vec<u8> = vec![
+            21, 11, 106, 56, 81, 202, 222, 6, 28, 6, 102, 145, 242, 229, 186, 18, 1, 201, 35, 155,
+            72, 221, 63, 142, 60, 93, 24, 185, 91, 21, 162, 27,
+        ];
+        let handshake_secret: Vec<u8> = vec![
+            200, 53, 90, 169, 169, 110, 114, 247, 175, 20, 202, 151, 150, 108, 79, 41, 173, 115,
+            169, 118, 196, 97, 4, 98, 236, 121, 171, 192, 218, 150, 39, 20,
+        ];
+
+        let hi = HandshakeMessagePayload::read_bytes(&*hello_inner).unwrap();
+        let mut conf_transcript = HandshakeHash::new();
+        conf_transcript.start_hash(&ring::digest::SHA256);
+        conf_transcript.add_handshake_message_payload(&hi);
+        assert_eq!(
+            &after_inner_digest,
+            conf_transcript
+                .get_current_hash()
+                .as_ref()
+        );
+
+        let sh = HandshakeMessagePayload::read_bytes(&*server_hello).unwrap();
+        let payload = match sh.payload {
+            HandshakePayload::ServerHello(payload) => payload,
+            _ => unreachable!(),
+        };
+
+        conf_transcript.update_raw(&*EncryptedClientHello::server_hello_conf(&payload));
+        assert_eq!(
+            &conf_digest,
+            conf_transcript
+                .get_current_hash()
+                .as_ref()
         );
     }
 }

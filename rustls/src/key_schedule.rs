@@ -181,10 +181,7 @@ impl KeyScheduleHandshake {
         secret
     }
 
-    pub fn server_ech_confirmation_secret(
-        &mut self,
-        hs_hash: &Digest,
-    ) -> PayloadU8 {
+    pub fn server_ech_confirmation_secret(&mut self, hs_hash: &Digest) -> PayloadU8 {
         self.ks.derive::<PayloadU8, _>(
             PayloadU8Len(self.ks.algorithm.len()),
             SecretKind::ServerHandshakeTrafficSecret,
@@ -492,13 +489,7 @@ where
     T: for<'a> From<hkdf::Okm<'a, L>>,
     L: hkdf::KeyType,
 {
-    hkdf_expand_info(
-        secret,
-        key_type,
-        label,
-        context,
-        |okm| okm.into(),
-    )
+    hkdf_expand_info(secret, key_type, label, context, |okm| okm.into())
 }
 
 fn hkdf_expand_info<F, T, L>(

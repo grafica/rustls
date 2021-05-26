@@ -162,12 +162,7 @@ pub(super) fn handle_server_hello(
         }
         ServerIdentity::EncryptedClientHello(ech) => {
             println!("Calculate transcript.");
-            ech.confirm_ech(
-                &mut key_schedule,
-                server_hello,
-                &randoms,
-                suite
-            )?
+            ech.confirm_ech(&mut key_schedule, server_hello, &randoms, suite)?
         }
     };
 
