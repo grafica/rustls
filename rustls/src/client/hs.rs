@@ -8,7 +8,7 @@ use crate::key_schedule::KeyScheduleEarly;
 use crate::kx;
 #[cfg(feature = "logging")]
 use crate::log::{debug, trace};
-use crate::msgs::base::{Payload, PayloadU16};
+use crate::msgs::base::Payload;
 use crate::msgs::codec::{Codec, Reader};
 use crate::msgs::enums::{AlertDescription, CipherSuite, Compression, ProtocolVersion};
 use crate::msgs::enums::{ContentType, ExtensionType, HandshakeType};
@@ -96,6 +96,7 @@ fn find_session(
         } else {
             #[cfg(feature = "quic")]
             {
+                use crate::msgs::base::PayloadU16;
                 if cx.common.is_quic() {
                     let params = PayloadU16::read(&mut reader)?;
                     cx.common.quic.params = Some(params.0);
@@ -374,7 +375,6 @@ fn emit_client_hello_for_retry(
 
     let early_key_schedule = if let Some(resuming) = fill_in_binder {
         let schedule = tls13::fill_in_psk_binder(&resuming, &transcript, &mut chp);
-        println!("early_key_schedule added to transcript");
         Some((resuming, schedule))
     } else {
         None
@@ -406,7 +406,6 @@ fn emit_client_hello_for_retry(
 
     // Calculate the hash of ClientHello and use it to derive EarlyTrafficSecret
     let early_key_schedule = early_key_schedule.map(|(resuming, schedule)| {
-        println!("derive early traffic secret");
         if !cx.data.early_data.is_enabled() {
             return schedule;
         }
@@ -617,7 +616,6 @@ impl State for ExpectServerHello {
                 self.sent_tls13_fake_ccs,
             )
         } else {
-            println!("add server_hello_message");
             self.transcript
                 .start_hash(&suite.get_hash());
             self.transcript.add_message(&m);
@@ -783,7 +781,6 @@ impl ExpectServerHelloOrHelloRetryRequest {
 
 impl State for ExpectServerHelloOrHelloRetryRequest {
     fn handle(self: Box<Self>, cx: &mut ClientContext<'_>, m: Message) -> NextStateOrError {
-        println!("ExpectServerHelloOrHelloRetryRequest.handle");
         check_message(
             &m,
             &[ContentType::Handshake],

@@ -65,7 +65,7 @@ pub(super) fn handle_server_hello(
     server_hello: &ServerHelloPayload,
     mut resuming_session: Option<persist::ClientSessionValueWithResolvedCipherSuite>,
     server_id: ServerIdentity,
-    randoms: ConnectionRandoms,
+    mut randoms: ConnectionRandoms,
     suite: &'static SupportedCipherSuite,
     mut transcript: HandshakeHash,
     early_key_schedule: Option<KeyScheduleEarly>,
@@ -73,7 +73,6 @@ pub(super) fn handle_server_hello(
     our_key_share: kx::KeyExchange,
     mut sent_tls13_fake_ccs: bool,
 ) -> hs::NextStateOrError {
-    println!("handle_server_hello");
     if !suite.usable_for_version(ProtocolVersion::TLSv1_3) {
         return Err(cx
             .common
@@ -136,7 +135,6 @@ pub(super) fn handle_server_hello(
         }
         early_key_schedule.into_handshake(&shared.shared_secret)
     } else {
-        println!("Not resuming");
         // Discard the early data key schedule.
         cx.data.early_data.rejected();
         cx.common.early_traffic = false;
@@ -155,31 +153,19 @@ pub(super) fn handle_server_hello(
     // the two halves will have different record layer protections.  Disallow this.
     cx.common.check_aligned_handshake()?;
 
-    let (randoms, mut transcript) = match &server_id {
+    let (client_random, mut transcript) = match &server_id {
         ServerIdentity::Hostname(_) => {
             transcript.start_hash(suite.get_hash());
-            (randoms, transcript)
+            (randoms.client, transcript)
         }
         ServerIdentity::EncryptedClientHello(ech) => {
-            println!("Calculate transcript.");
-            ech.confirm_ech(&mut key_schedule, server_hello, &randoms, suite)?
+            ech.confirm_ech(&mut key_schedule, server_hello, suite)?
         }
     };
+    randoms.client = client_random;
 
-    println!("add server_hello_message");
     transcript.update_raw(&*server_message);
 
-    /*
-        let (randoms, transcript) = match &server_id {
-        ServerIdentity::Hostname(_) => (randoms, transcript),
-        ServerIdentity::EncryptedClientHello(ech) => {
-            println!("Calculate transcript.");
-            ech.confirm_ech( &*config.key_log, &mut key_schedule, server_hello, &randoms, suite.get_hash())
-        }
-    };
-     */
-
-    println!("transcript: {:?}", transcript.get_current_hash());
     let hash_at_client_recvd_server_hello = transcript.get_current_hash();
 
     let _maybe_write_key = if !cx.data.early_data.is_enabled() {
@@ -443,7 +429,6 @@ struct ExpectEncryptedExtensions {
 
 impl hs::State for ExpectEncryptedExtensions {
     fn handle(mut self: Box<Self>, cx: &mut ClientContext<'_>, m: Message) -> hs::NextStateOrError {
-        println!("handle ExpectEncryptedExtensions");
         let exts = require_handshake_msg!(
             m,
             HandshakeType::EncryptedExtensions,
@@ -951,7 +936,6 @@ struct ExpectFinished {
 
 impl hs::State for ExpectFinished {
     fn handle(self: Box<Self>, cx: &mut ClientContext<'_>, m: Message) -> hs::NextStateOrError {
-        println!("ExpectFinished");
         let mut st = *self;
         let finished =
             require_handshake_msg!(m, HandshakeType::Finished, HandshakePayload::Finished)?;

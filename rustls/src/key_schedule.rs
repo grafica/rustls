@@ -130,7 +130,6 @@ impl KeyScheduleNonSecret {
     }
 
     pub fn into_handshake(mut self, secret: &[u8]) -> KeyScheduleHandshake {
-        println!("input secret: {:?}", secret);
         self.ks.input_secret(secret);
         KeyScheduleHandshake {
             ks: self.ks,

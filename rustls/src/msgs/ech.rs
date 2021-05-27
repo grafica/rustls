@@ -1,7 +1,6 @@
-use crate::conn::ConnectionRandoms;
 use crate::hash_hs::HandshakeHash;
-use crate::key_schedule::{hkdf_expand, KeyScheduleHandshake, PayloadU8Len};
-use crate::msgs::base::{PayloadU8, PayloadU16, PayloadU24};
+use crate::key_schedule::KeyScheduleHandshake;
+use crate::msgs::base::{PayloadU16, PayloadU24};
 use crate::msgs::codec;
 use crate::msgs::codec::{Codec, Reader};
 use crate::msgs::enums::{ExtensionType, HandshakeType};
@@ -13,15 +12,11 @@ use crate::msgs::handshake::{
 };
 use crate::msgs::message::{Message, MessagePayload};
 use crate::{rand, SupportedCipherSuite};
-use crate::{Error, KeyLog, ProtocolVersion};
+use crate::{Error, ProtocolVersion};
 use hpke_rs::prelude::*;
 use hpke_rs::{Hpke, Mode};
-use ring::digest::{self, Algorithm, Digest};
-use ring::hkdf::KeyType;
-use ring::hkdf::Prk;
-use std::convert::TryInto;
+use ring::digest::Algorithm;
 use webpki;
-use crate::key_schedule::KeySchedule;
 
 const HPKE_INFO: &[u8; 8] = b"tls ech\0";
 
@@ -173,7 +168,6 @@ impl EncryptedClientHello {
         // Create the buffer to be encrypted.
         let mut encoded_hello = Vec::new();
         inner_hello.encode(&mut encoded_hello);
-        println!("encoded hello bytes: {:?}", encoded_hello);
         inner_hello.session_id = original_session_id;
 
         // Remove outer_extensions.
@@ -257,58 +251,63 @@ impl EncryptedClientHello {
         }
     }
 
-    pub(crate) fn confirm_ech(
+    pub fn confirm_ech(
         &self,
         ks: &mut KeyScheduleHandshake,
         server_hello: &ServerHelloPayload,
-        randoms: &ConnectionRandoms,
         suite: &SupportedCipherSuite,
-    ) -> Result<(ConnectionRandoms, HandshakeHash), Error> {
-        let m = self.inner_message.as_ref().unwrap();
-        let conf = Self::confirmation_transcript(m, server_hello, suite.get_hash());
+    ) -> Result<([u8; 32], HandshakeHash), Error> {
+        // The ClientHelloInner prior to encoding.
+        let m = self
+            .inner_message
+            .as_ref()
+            .ok_or_else(|| Error::General("No ClientHelloInner".to_string()))?;
 
-        let digits = ks.server_ech_confirmation_secret(&conf.get_current_hash());
-        println!("====");
-        println!("{:?}", server_hello.random.get_encoding());
-        println!("{:?}", digits.0);
-        println!("{:?}", &server_hello.random.get_encoding()[24..]);
-        println!("{:?}", &digits.0[..8]);
+        // A confirmation transcript calculated from the ClientHelloInner and the ServerHello,
+        // with the last 8 bytes of the server random modified to be zeros.
+        let conf = confirmation_transcript(m, server_hello, suite.get_hash());
 
+        // Derive a secret from the current handshake and the confirmation transcript.
+        let derived = ks.server_ech_confirmation_secret(&conf.get_current_hash());
+
+        // Check that first 8 digits of the derived secret match the last 8 digits of the original
+        // server random. This match signals that the server accepted the ECH offer.
+        if &derived.into_inner()[..8] != &server_hello.random.get_encoding()[24..] {
+            return Err(Error::General("ECH didn't match".to_string()));
+        }
+
+        // Since the ECH offer was accepted, the handshake will move forward with a fresh transcript
+        // calculated from the ClientHelloInner, and the handshake should also use the client random
+        // from the ClientHelloInner. The ServerHello is added to the transcript next, whether or
+        // not the ECH offer was accepted.
         let mut inner_transcript = HandshakeHash::new();
         inner_transcript.start_hash(suite.get_hash());
         inner_transcript.add_message(m);
-        let inner_randoms = ConnectionRandoms {
-            we_are_client: true,
-            client: self.inner_random,
-            server: randoms.server,
-        };
-
-        println!("returning inner_transcript");
-        Ok((inner_randoms, inner_transcript))
+        Ok((self.inner_random, inner_transcript))
     }
+}
 
-    fn confirmation_transcript(
-        m: &Message,
-        server_hello: &ServerHelloPayload,
-        alg: &'static Algorithm,
-    ) -> HandshakeHash {
-        let mut confirmation_transcript = HandshakeHash::new();
-        confirmation_transcript.start_hash(alg);
-        confirmation_transcript.add_message(m);
-        let mut shc = Self::server_hello_conf(server_hello);
-        confirmation_transcript.update_raw(&mut shc);
-        confirmation_transcript
-    }
+fn confirmation_transcript(
+    m: &Message,
+    server_hello: &ServerHelloPayload,
+    alg: &'static Algorithm,
+) -> HandshakeHash {
+    let mut confirmation_transcript = HandshakeHash::new();
+    confirmation_transcript.start_hash(alg);
+    confirmation_transcript.add_message(m);
+    let mut shc = server_hello_conf(server_hello);
+    confirmation_transcript.update_raw(&mut shc);
+    confirmation_transcript
+}
 
-    fn server_hello_conf(server_hello: &ServerHelloPayload) -> Vec<u8> {
-        let mut encoded_sh = Vec::new();
-        server_hello.encode_for_ech_confirmation(&mut encoded_sh);
-        let mut hmp_encoded = Vec::new();
-        HandshakeType::ServerHello.encode(&mut hmp_encoded);
-        codec::u24(encoded_sh.len() as u32).encode(&mut hmp_encoded);
-        hmp_encoded.append(&mut encoded_sh);
-        hmp_encoded
-    }
+fn server_hello_conf(server_hello: &ServerHelloPayload) -> Vec<u8> {
+    let mut encoded_sh = Vec::new();
+    server_hello.encode_for_ech_confirmation(&mut encoded_sh);
+    let mut hmp_encoded = Vec::new();
+    HandshakeType::ServerHello.encode(&mut hmp_encoded);
+    codec::u24(encoded_sh.len() as u32).encode(&mut hmp_encoded);
+    hmp_encoded.append(&mut encoded_sh);
+    hmp_encoded
 }
 
 #[cfg(test)]
@@ -323,9 +322,7 @@ mod test {
     use crate::msgs::handshake::*;
     use crate::ProtocolVersion;
     use base64;
-    use std::convert::TryInto;
     use webpki::DnsNameRef;
-    use crate::key_schedule::{KeyScheduleEarly, SecretKind};
 
     const BASE64_ECHCONFIGS: &str = "AEj+CgBEuwAgACCYKvleXJQ16RUURAsG1qTRN70ob5ewCDH6NuzE97K8MAAEAAEAAQAAABNjbG91ZGZsYXJlLWVzbmkuY29tAAA=";
     fn get_ech_config(s: &str) -> (EchConfigList, Vec<u8>) {
@@ -624,16 +621,6 @@ mod test {
             134, 204, 173, 130, 111,
         ];
 
-        /*
-        for vec in &[hello_base, hello_outer, hello_inner] {
-            let deserialized =
-                HandshakeMessagePayload::read(&mut Reader::init(vec.as_slice())).unwrap();
-            let mut serialized: Vec<u8> = Vec::new();
-            deserialized.encode(&mut serialized);
-            assert_eq!(*vec, serialized);
-        } */
-
-
         let (_ech_configs, bytes) = get_ech_config(ech_config_list);
         let host = webpki::DnsNameRef::try_from_ascii(b"crypto.cloudflare.com").unwrap();
         let mut ech = EncryptedClientHello::with_host_and_config_list(host, &bytes).unwrap();
@@ -666,16 +653,9 @@ mod test {
             _ => unreachable!(),
         };
 
-
-        println!("expected:       {:?}", expected_inner);
-        println!("got inner:      {:?}", inner_payload);
         let mut serialized_inner: Vec<u8> = Vec::new();
         inner_payload.encode(&mut serialized_inner);
         assert_eq!(hello_inner, serialized_inner);
-
-        println!("expected:       {:?}", expected_outer);
-        println!("got outer:      {:?}", outer);
-
         let mut serialized_outer: Vec<u8> = Vec::new();
         assert_eq!(outer.typ, expected_outer.typ);
 
@@ -728,7 +708,7 @@ mod test {
         };
         assert_eq!(
             server_hello_conf,
-            EncryptedClientHello::server_hello_conf(&payload)
+            super::server_hello_conf(&payload)
         );
     }
 
@@ -796,7 +776,7 @@ mod test {
             _ => unreachable!(),
         };
 
-        conf_transcript.update_raw(&*EncryptedClientHello::server_hello_conf(&payload));
+        conf_transcript.update_raw(&super::server_hello_conf(&payload));
         assert_eq!(
             &conf_digest,
             conf_transcript
