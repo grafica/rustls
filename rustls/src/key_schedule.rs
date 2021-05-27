@@ -12,7 +12,7 @@ use ring::{
 
 /// The kinds of secret we can extract from `KeySchedule`.
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum SecretKind {
+pub enum SecretKind {
     ResumptionPskBinderKey,
     ClientEarlyTrafficSecret,
     ClientHandshakeTrafficSecret,
@@ -61,7 +61,7 @@ impl SecretKind {
 /// This is the TLS1.3 key schedule.  It stores the current secret and
 /// the type of hash.  This isn't used directly; but only through the
 /// typestates.
-struct KeySchedule {
+pub(crate) struct KeySchedule {
     current: hkdf::Prk,
     algorithm: ring::hkdf::Algorithm,
 }
@@ -343,7 +343,7 @@ impl KeyScheduleTraffic {
 }
 
 impl KeySchedule {
-    fn new(algorithm: hkdf::Algorithm, secret: &[u8]) -> KeySchedule {
+    pub(crate) fn new(algorithm: hkdf::Algorithm, secret: &[u8]) -> KeySchedule {
         let zeroes = [0u8; digest::MAX_OUTPUT_LEN];
         let zeroes = &zeroes[..algorithm.len()];
         let salt = hkdf::Salt::new(algorithm, &zeroes);
@@ -376,7 +376,7 @@ impl KeySchedule {
     }
 
     /// Derive a secret of given `kind`, using current handshake hash `hs_hash`.
-    fn derive<T, L>(&self, key_type: L, kind: SecretKind, hs_hash: &[u8]) -> T
+    pub(crate) fn derive<T, L>(&self, key_type: L, kind: SecretKind, hs_hash: &[u8]) -> T
     where
         T: for<'a> From<hkdf::Okm<'a, L>>,
         L: hkdf::KeyType,

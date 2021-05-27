@@ -21,6 +21,7 @@ use ring::hkdf::KeyType;
 use ring::hkdf::Prk;
 use std::convert::TryInto;
 use webpki;
+use crate::key_schedule::KeySchedule;
 
 const HPKE_INFO: &[u8; 8] = b"tls ech\0";
 
@@ -266,6 +267,12 @@ impl EncryptedClientHello {
         let m = self.inner_message.as_ref().unwrap();
         let conf = Self::confirmation_transcript(m, server_hello, suite.get_hash());
 
+        let digits = ks.server_ech_confirmation_secret(&conf.get_current_hash());
+        println!("====");
+        println!("{:?}", server_hello.random.get_encoding());
+        println!("{:?}", digits.0);
+        println!("{:?}", &server_hello.random.get_encoding()[24..]);
+        println!("{:?}", &digits.0[..8]);
 
         let mut inner_transcript = HandshakeHash::new();
         inner_transcript.start_hash(suite.get_hash());
@@ -318,6 +325,7 @@ mod test {
     use base64;
     use std::convert::TryInto;
     use webpki::DnsNameRef;
+    use crate::key_schedule::{KeyScheduleEarly, SecretKind};
 
     const BASE64_ECHCONFIGS: &str = "AEj+CgBEuwAgACCYKvleXJQ16RUURAsG1qTRN70ob5ewCDH6NuzE97K8MAAEAAEAAQAAABNjbG91ZGZsYXJlLWVzbmkuY29tAAA=";
     fn get_ech_config(s: &str) -> (EchConfigList, Vec<u8>) {
@@ -795,5 +803,14 @@ mod test {
                 .get_current_hash()
                 .as_ref()
         );
+
+        //let digits = hkdf_expand::<PayloadU8, _>(&handshake_secret, PayloadU8Len(32), b"ech accept confirmation", conf_transcript.get_current_hash().as_ref());
+
+        let ks = KeySchedule::new(ring::hkdf::HKDF_SHA256, &handshake_secret);
+        let digits = ks.derive::<PayloadU8, _>(PayloadU8Len(ring::hkdf::HKDF_SHA256.len()), SecretKind::ServerEchConfirmationSecret, conf_transcript.get_current_hash().as_ref());
+        println!("sh random: {:?}", &payload.random.get_encoding()[24..]);
+        println!("   digits: {:?}", &digits.0[..8]);
+
+            // assert!(false);
     }
 }
