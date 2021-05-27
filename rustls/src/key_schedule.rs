@@ -184,7 +184,7 @@ impl KeyScheduleHandshake {
     pub fn server_ech_confirmation_secret(&mut self, hs_hash: &Digest) -> PayloadU8 {
         self.ks.derive::<PayloadU8, _>(
             PayloadU8Len(self.ks.algorithm.len()),
-            SecretKind::ServerHandshakeTrafficSecret,
+            SecretKind::ServerEchConfirmationSecret,
             hs_hash.as_ref(),
         )
     }

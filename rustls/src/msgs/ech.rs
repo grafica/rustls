@@ -803,14 +803,5 @@ mod test {
                 .get_current_hash()
                 .as_ref()
         );
-
-        //let digits = hkdf_expand::<PayloadU8, _>(&handshake_secret, PayloadU8Len(32), b"ech accept confirmation", conf_transcript.get_current_hash().as_ref());
-
-        let ks = KeySchedule::new(ring::hkdf::HKDF_SHA256, &handshake_secret);
-        let digits = ks.derive::<PayloadU8, _>(PayloadU8Len(ring::hkdf::HKDF_SHA256.len()), SecretKind::ServerEchConfirmationSecret, conf_transcript.get_current_hash().as_ref());
-        println!("sh random: {:?}", &payload.random.get_encoding()[24..]);
-        println!("   digits: {:?}", &digits.0[..8]);
-
-            // assert!(false);
     }
 }
