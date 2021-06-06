@@ -102,7 +102,7 @@ impl EncryptedClientHello {
         )
     }
 
-    pub fn encode(&mut self, mut hello: ClientHelloPayload) -> HandshakeMessagePayload {
+    pub fn encode(&mut self, mut hello: ClientHelloPayload, is_retry: bool) -> HandshakeMessagePayload {
         // Remove the SNI
         if let Some(index) = hello
             .extensions
@@ -257,6 +257,7 @@ impl EncryptedClientHello {
         server_hello: &ServerHelloPayload,
         suite: &SupportedCipherSuite,
     ) -> Result<([u8; 32], HandshakeHash), Error> {
+        println!("Confirm ECH");
         // The ClientHelloInner prior to encoding.
         let m = self
             .inner_message
@@ -283,6 +284,18 @@ impl EncryptedClientHello {
         let mut inner_transcript = HandshakeHash::new();
         inner_transcript.start_hash(suite.get_hash());
         inner_transcript.add_message(m);
+        Ok((self.inner_random, inner_transcript))
+    }
+
+    pub fn rollup_for_hrr(&mut self, suite: &SupportedCipherSuite) -> Result<([u8; 32], HandshakeHash), Error>{
+        let m = self
+            .inner_message
+            .as_ref()
+            .ok_or_else(|| Error::General("No ClientHelloInner".to_string()))?;
+        let mut inner_transcript = HandshakeHash::new();
+        inner_transcript.start_hash(suite.get_hash());
+        inner_transcript.add_message(m);
+        inner_transcript.rollup_for_hrr();
         Ok((self.inner_random, inner_transcript))
     }
 }

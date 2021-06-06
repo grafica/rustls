@@ -153,6 +153,8 @@ pub(super) fn handle_server_hello(
     // the two halves will have different record layer protections.  Disallow this.
     cx.common.check_aligned_handshake()?;
 
+    println!("HI");
+
     let (client_random, mut transcript) = match &server_id {
         ServerIdentity::Hostname(_) => {
             transcript.start_hash(suite.get_hash());

@@ -135,7 +135,7 @@ pub(super) fn start_handshake(
     );
 
     let key_share = if support_tls13 {
-        Some(tls13::initial_key_share(&config, hostname)?)
+        None // Some(tls13::initial_key_share(&config, hostname)?)
     } else {
         None
     };
@@ -222,6 +222,7 @@ fn emit_client_hello_for_retry(
     may_send_sct_list: bool,
     suite: Option<&'static SupportedCipherSuite>,
 ) -> NextState {
+    println!("emit_client_hello_for_retry");
     // Do we have a SessionID or ticket cached for this host?
     let (ticket, resume_version) = if let Some(resuming) = &resuming_session {
         (resuming.ticket.0.clone(), resuming.version)
@@ -365,12 +366,16 @@ fn emit_client_hello_for_retry(
         extensions: exts,
     };
 
+    println!("Initial payload.");
     let mut chp = match server_id {
         ServerIdentity::Hostname(_) => HandshakeMessagePayload {
             typ: HandshakeType::ClientHello,
             payload: HandshakePayload::ClientHello(initial_payload),
         },
-        ServerIdentity::EncryptedClientHello(ref mut ech) => ech.encode(initial_payload),
+        ServerIdentity::EncryptedClientHello(ref mut ech) => {
+            println!("calling ECH encode");
+            ech.encode(initial_payload, retryreq.is_some())
+        },
     };
 
     let early_key_schedule = if let Some(resuming) = fill_in_binder {
@@ -379,7 +384,6 @@ fn emit_client_hello_for_retry(
     } else {
         None
     };
-
 
     let ch = Message {
         // "This value MUST be set to 0x0303 for all records generated
@@ -399,6 +403,7 @@ fn emit_client_hello_for_retry(
         tls13::emit_fake_ccs(&mut sent_tls13_fake_ccs, cx.common);
     }
 
+    println!("sending client hello");
     trace!("Sending ClientHello {:#?}", ch);
 
     transcript.add_message(&ch);
@@ -440,6 +445,7 @@ fn emit_client_hello_for_retry(
     if support_tls13 && retryreq.is_none() {
         Box::new(ExpectServerHelloOrHelloRetryRequest { next, extra_exts })
     } else {
+        println!("next...");
         Box::new(next)
     }
 }
@@ -480,6 +486,7 @@ impl State for ExpectServerHello {
     fn handle(mut self: Box<Self>, cx: &mut ClientContext<'_>, m: Message) -> NextStateOrError {
         let server_hello =
             require_handshake_msg!(m, HandshakeType::ServerHello, HandshakePayload::ServerHello)?;
+        println!("Expect server hello.");
         trace!("We got ServerHello {:#?}", server_hello);
 
         use crate::ProtocolVersion::{TLSv1_2, TLSv1_3};
@@ -638,6 +645,7 @@ impl State for ExpectServerHello {
 
 impl ExpectServerHelloOrHelloRetryRequest {
     fn into_expect_server_hello(self) -> NextState {
+        println!("into_expect_server_hello");
         Box::new(self.next)
     }
 
@@ -651,23 +659,23 @@ impl ExpectServerHelloOrHelloRetryRequest {
             HandshakeType::HelloRetryRequest,
             HandshakePayload::HelloRetryRequest
         )?;
-        trace!("Got HRR {:?}", hrr);
-
+        println!("Got HRR {:?}", hrr);
         cx.common.check_aligned_handshake()?;
 
         let cookie = hrr.get_cookie();
         let req_group = hrr.get_requested_key_share_group();
 
-        // We always send a key share when TLS 1.3 is enabled.
-        let offered_key_share = self.next.offered_key_share.unwrap();
+        if let Some(offered_key_share) = &self.next.offered_key_share {
+            if cookie.is_none() && req_group == Some(offered_key_share.group()) {
+                return Err(cx
+                    .common
+                    .illegal_param("server requested hrr with our group"));
+            }
+        }
 
         // A retry request is illegal if it contains no cookie and asks for
         // retry of a group we already sent.
-        if cookie.is_none() && req_group == Some(offered_key_share.group()) {
-            return Err(cx
-                .common
-                .illegal_param("server requested hrr with our group"));
-        }
+        /**/
 
         // Or has an empty cookie.
         if let Some(cookie) = cookie {
@@ -737,6 +745,10 @@ impl ExpectServerHelloOrHelloRetryRequest {
         self.next.transcript.rollup_for_hrr();
         self.next.transcript.add_message(&m);
 
+        if let ServerIdentity::EncryptedClientHello(ech) = &mut self.next.server_id {
+            println!("need to roll up inner transcript.");
+        }
+
         // Early data is not allowed after HelloRetryrequest
         if cx.data.early_data.is_enabled() {
             cx.data.early_data.rejected();
@@ -748,7 +760,7 @@ impl ExpectServerHelloOrHelloRetryRequest {
             .server_may_send_sct_list();
 
         let key_share = match req_group {
-            Some(group) if group != offered_key_share.group() => {
+            Some(group) => {
                 let group = kx::KeyExchange::choose(group, &self.next.config.kx_groups)
                     .ok_or_else(|| {
                         cx.common
@@ -756,9 +768,11 @@ impl ExpectServerHelloOrHelloRetryRequest {
                     })?;
                 kx::KeyExchange::start(group).ok_or(Error::FailedToGetRandomBytes)?
             }
-            _ => offered_key_share,
+            _ => self.next.offered_key_share.unwrap(),
         };
 
+        println!("key_share: {:?}", key_share.group());
+        println!("emit");
         Ok(emit_client_hello_for_retry(
             self.next.config,
             cx,
